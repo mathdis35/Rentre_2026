@@ -138,7 +138,6 @@ def parse_planning_classe(fp):
 
 # ── Parser disponibilités (sans pandas) ───────
 def parse_disponibilite(filepath):
-    """Lit le tableau de dispo avec openpyxl uniquement"""
     nom = Path(filepath).stem
     dispo = {}
     try:
@@ -150,7 +149,6 @@ def parse_disponibilite(filepath):
 
     if len(rows) < 2: return {'nom': nom, 'dispo': {}}
 
-    # Ligne 0 = headers mois
     header = rows[0]
     month_cols = []
     for ci, val in enumerate(header):
@@ -183,133 +181,109 @@ def parse_disponibilite(filepath):
                 mv = row[col_matin] if col_matin < len(row) else None
                 pv = row[col_pm]    if col_pm    < len(row) else None
                 if cell_to_str(mv).lower() in ign: continue
-                dispo[ds] = {'matin': is_available(mv), 'pm': is_available(pv)}
+                matin = is_available(mv)
+                pm    = is_available(pv)
+                if matin or pm:
+                    dispo[ds] = {'matin': matin, 'pm': pm}
             except: pass
-
     return {'nom': nom, 'dispo': dispo}
 
-# ── Parser tableau formateurs (sans pandas) ───
+# ── Parser tableau formateurs ──────────────────
 def parse_tableau_formateurs(filepath):
-    assignments = defaultdict(list)
+    try:
+        wb = load_workbook(filepath, data_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+    except:
+        return {}
 
-    def process(rows):
-        cur = None
-        for row in rows:
-            v0 = cell_to_str(row[0]) if row and row[0] is not None else ''
-            if re.match(r'(BTS|BAC|CGC|NDRC|GPME|Master|RDC|RH|EC)\s', v0, re.I):
-                cur = v0
-            elif cur and v0 and len(row) > 1 and row[1]:
-                mat = cell_to_str(row[1])
-                heures_raw = row[-1] if row else 0
-                try: h = float(str(heures_raw).split('+')[0].strip())
-                except: h = 0
-                if h > 0 and mat and mat.lower() not in ['nan', 'total', '']:
-                    assignments[cur].append({'formateur': v0, 'matiere': mat, 'heures': h, 'heures_faites': 0})
+    aff = {}
+    if not rows: return aff
+    header = [cell_to_str(c).lower() for c in rows[0]]
 
-    ext = Path(filepath).suffix.lower()
-    if ext == '.xls':
-        try:
-            wb = xlrd.open_workbook(filepath)
-            si = next((i for i, n in enumerate(wb.sheet_names()) if 'mois' in n.lower()), len(wb.sheet_names())-1)
-            ws = wb.sheet_by_index(si)
-            process([[ws.cell_value(r, c) for c in range(ws.ncols)] for r in range(ws.nrows)])
-        except: pass
-    else:
-        try:
-            wb = load_workbook(filepath, data_only=True)
-            sn = next((s for s in wb.sheetnames if 'mois' in s.lower()), wb.sheetnames[-1])
-            process(list(wb[sn].iter_rows(values_only=True)))
-        except: pass
-    return dict(assignments)
+    col_nom = col_mat = col_pm = col_classe = None
+    for i, h in enumerate(header):
+        if 'nom' in h or 'formateur' in h: col_nom = i
+        if 'matin' in h: col_mat = i
+        if 'après' in h or 'apres' in h or 'pm' in h: col_pm = i
+        if 'class' in h or 'groupe' in h: col_classe = i
 
-# ── Moteur assignation ────────────────────────
-def assigner(planning_classes, dispos_formateurs, affectations):
-    dispo_idx = {d['nom']: d['dispo'] for d in dispos_formateurs}
-    result = defaultdict(dict)
+    if col_nom is None: return aff
+
+    for row in rows[1:]:
+        nom = cell_to_str(row[col_nom]) if col_nom < len(row) else ''
+        if not nom: continue
+        matin   = is_available(row[col_mat])    if col_mat   is not None and col_mat   < len(row) else False
+        pm      = is_available(row[col_pm])     if col_pm    is not None and col_pm    < len(row) else False
+        classes = cell_to_str(row[col_classe])  if col_classe is not None and col_classe < len(row) else ''
+        aff[nom] = {'matin': matin, 'pm': pm, 'classes': classes}
+    return aff
+
+# ── Assignation ───────────────────────────────
+def assigner(planning_classes, dispos, aff):
+    assignment = defaultdict(lambda: defaultdict(dict))
     stats = {'assigned': 0, 'warn': 0}
+    heures = defaultdict(lambda: defaultdict(float))
 
-    for ci in planning_classes:
-        cn = ci['nom']; jours = ci['jours']
-        aff = next((v for k, v in affectations.items()
-                    if k.strip().lower() in cn.lower() or cn.lower() in k.lower()), None)
-        if not aff:
-            for j in jours: result[j][cn] = {'formateur': '?', 'matiere': '?', 'slot': 'matin'}
-            continue
-        si = 0
-        for j in jours:
-            slot = ['matin', 'pm'][si % 2]; si += 1; assigned = None
-            for e in sorted(aff, key=lambda x: x['heures_faites']):
-                pd_ = dispo_idx.get(e['formateur'], {}); jd = pd_.get(j, {})
-                if e['heures'] - e['heures_faites'] <= 0: continue
-                if not pd_ or jd.get(slot, False): assigned = e; break
-            if assigned:
-                assigned['heures_faites'] += 4
-                result[j][cn] = {'formateur': assigned['formateur'], 'matiere': assigned['matiere'], 'slot': slot}
+    formateurs = list(dispos)
+    charge = defaultdict(float)
+
+    for pc in planning_classes:
+        for ds in pc['jours']:
+            for demi in ['matin', 'pm']:
+                candidats = []
+                for d in dispos:
+                    nom = d['nom']
+                    if ds not in d['dispo']: continue
+                    if not d['dispo'][ds].get(demi): continue
+                    candidats.append(nom)
+
+                if not candidats:
+                    stats['warn'] += 1
+                    continue
+
+                candidats.sort(key=lambda n: charge[n])
+                choisi = candidats[0]
+                assignment[ds][demi][pc['nom']] = choisi
+                charge[choisi] += 0.5
+                heures[choisi][ds[:7]] = heures[choisi].get(ds[:7], 0) + 0.5
                 stats['assigned'] += 1
-            else:
-                result[j][cn] = {'formateur': '⚠️', 'matiere': '', 'slot': slot}
-                stats['warn'] += 1
 
-    heures = defaultdict(lambda: defaultdict(int))
-    for dv in result.values():
-        for cl, inf in dv.items():
-            if inf['formateur'] not in ['?', '⚠️']:
-                heures[inf['formateur']][inf['matiere']] += 4
-    return dict(result), stats, dict(heures)
+    return assignment, stats, heures
 
-# ── Écriture planning assigné ─────────────────
-def ecrire_planning(template_path, assignment, mois_cibles, output_path):
-    shutil.copy(template_path, output_path)
-    wb = load_workbook(output_path)
-    kw = ['BTS','BAC','EC ','CGC','NDRC','GPME','RDC','RH','Master']
-    jf = {'lundi':0,'mardi':1,'mercredi':2,'jeudi':3,'vendredi':4,'lun':0,'mar':1,'mer':2,'jeu':3,'ven':4}
+# ── Écriture planning ─────────────────────────
+def ecrire_planning(template_path, assignment, mois_sel, output_path):
+    wb = load_workbook(template_path)
+    for ws in wb.worksheets:
+        titre = ws.title.lower()
+        m_match = None
+        for mn, mn_fr in enumerate(MOIS_FR):
+            if mn_fr.lower() in titre:
+                m_match = mn; break
+        if m_match is None: continue
 
-    for sn in wb.sheetnames:
-        ws = wb[sn]; titre = ''
-        for ri in range(1, 4):
-            for ci in range(1, ws.max_column+1):
-                v = ws.cell(row=ri, column=ci).value
-                if v and isinstance(v, str) and len(v.strip()) > 3:
-                    titre = v.upper(); break
-        mn, yr = None, None
-        for m, mnum in MOIS_ABBR.items():
-            if m.upper() in titre:
-                y = re.search(r'(20\d\d)', titre)
-                if y: yr = int(y.group(1)); mn = mnum; break
-        if not mn or f'{mn}/{yr}' not in mois_cibles: continue
+        yr_match = re.search(r'20\d\d', ws.title)
+        if not yr_match: continue
+        yr = int(yr_match.group())
+        mk = f"{m_match}/{yr}"
+        if mk not in mois_sel: continue
 
-        cc = {}
-        for ri in range(1, 6):
-            for ci in range(1, ws.max_column+1):
-                v = ws.cell(row=ri, column=ci).value
-                if isinstance(v, str) and any(k in v for k in kw): cc[v.strip()] = ci
-
-        dr = {}
-        for ri in range(1, ws.max_row+1):
-            for ci in range(1, 4):
-                v = ws.cell(row=ri, column=ci).value
-                if isinstance(v, str) and v.strip().lower() in jf:
-                    for lri in [ri, ri+1]:
-                        for lci in range(1, 4):
-                            dv = ws.cell(row=lri, column=lci).value
-                            if isinstance(dv, (int, float)) and 1 <= int(dv) <= 31:
-                                try:
-                                    d = datetime.date(yr, mn, int(dv))
-                                    ds = d.strftime('%Y-%m-%d')
-                                    if ds not in dr: dr[ds] = ri
-                                except: pass
-
-        for ds, ri in dr.items():
-            if ds not in assignment: continue
-            for cn, ci in cc.items():
-                for k, v in assignment[ds].items():
-                    if k.strip().lower() in cn.lower() or cn.lower() in k.strip().lower():
-                        cell = ws.cell(row=ri, column=ci)
-                        cell.value = '⚠️' if v['formateur'] == '⚠️' else f"{v['formateur']}\n{v['matiere']}"
-                        old = cell.font
-                        cell.font = Font(name=old.name or 'Calibri', size=old.size or 9, bold=True, color=old.color)
-                        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-                        break
+        for row in ws.iter_rows():
+            for cell in row:
+                if not isinstance(cell.value, str): continue
+                ds_match = re.search(r'(\d{4}-\d{2}-\d{2})', str(cell.value))
+                if not ds_match: continue
+                ds = ds_match.group(1)
+                if ds not in assignment: continue
+                texts = []
+                for demi in ['matin', 'pm']:
+                    if demi in assignment[ds]:
+                        for classe, formateur in assignment[ds][demi].items():
+                            texts.append(f"{demi[0].upper()} – {formateur}")
+                if texts:
+                    cell.value = '\n'.join(texts)
+                    cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                    break
     wb.save(output_path)
 
 # ── Génération template colorié ───────────────
@@ -324,7 +298,6 @@ def detect_structure(ws):
                 if cell.fill and cell.fill.fgColor and cell.fill.fgColor.type == 'rgb':
                     c = cell.fill.fgColor.rgb
                     if c not in ('00000000', 'FFFFFFFF'): colors[nom] = c
-    # Chercher couleurs dans les données si absent des headers
     for nom, ci in cc.items():
         if nom in colors: continue
         for ri in range(5, min(25, ws.max_row+1)):
@@ -333,7 +306,6 @@ def detect_structure(ws):
                 c = cell.fill.fgColor.rgb
                 if c not in ('00000000', 'FFFFFFFF', None):
                     colors[nom] = c; break
-    # Première ligne de données
     jf_set = {'lundi','mardi','mercredi','jeudi','vendredi','lun','mar','mer','jeu','ven'}
     fdr = 6; dlc = 2
     for ri in range(3, 20):
@@ -383,14 +355,12 @@ def generer_template_colorie(template_path, planning_classes, annee_debut, outpu
         for mg in ws_src.merged_cells.ranges:
             ws.merge_cells(str(mg))
 
-        # Mettre à jour le titre du mois
         for ri in range(1, 4):
             for ci2 in range(1, ws.max_column+1):
                 v = ws.cell(row=ri, column=ci2).value
                 if isinstance(v, str) and re.search(r'20\d\d', v):
                     ws.cell(row=ri, column=ci2).value = f"{MOIS_FR[mois].upper()} {annee}"
 
-        # Jours ouvrés
         nb_j = calendar.monthrange(annee, mois)[1]
         jours_ouvres = [datetime.date(annee, mois, j) for j in range(1, nb_j+1)
                         if datetime.date(annee, mois, j).weekday() < 5

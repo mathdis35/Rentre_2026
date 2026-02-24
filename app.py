@@ -352,11 +352,100 @@ def detect_structure(ws):
         break
     return {'class_cols': cc, 'class_colors': colors, 'first_data_row': fdr, 'day_label_col': dlc}
 
+def snapshot_template(ws_src):
+    """Lit toutes les données du template en mémoire (dict) — évite de recharger le fichier 12x"""
+    snap = {'cells': {}, 'col_widths': {}, 'row_heights': {}, 'merges': []}
+    for row in ws_src.iter_rows():
+        for cell in row:
+            entry = {'value': cell.value, 'style': None}
+            if cell.has_style:
+                try:
+                    fi = cell.fill
+                    fill = None
+                    if fi and fi.fill_type == 'solid':
+                        fg = fi.fgColor.rgb if fi.fgColor and fi.fgColor.type == 'rgb' else 'FFFFFFFF'
+                        fill = ('solid', fg)
+                    f = cell.font
+                    font = {
+                        'name': f.name, 'size': f.size, 'bold': f.bold,
+                        'italic': f.italic, 'underline': f.underline,
+                        'strike': f.strike, 'color': f.color, 'vertAlign': f.vertAlign
+                    }
+                    b = cell.border
+                    def ss(s):
+                        if s is None: return (None, None)
+                        return (s.style, s.color)
+                    border = (ss(b.left), ss(b.right), ss(b.top), ss(b.bottom))
+                    a = cell.alignment
+                    align = {
+                        'horizontal': a.horizontal, 'vertical': a.vertical,
+                        'wrap_text': a.wrap_text, 'shrink_to_fit': a.shrink_to_fit,
+                        'indent': a.indent, 'text_rotation': a.text_rotation
+                    }
+                    entry['style'] = {'font': font, 'fill': fill, 'border': border,
+                                      'align': align, 'number_format': cell.number_format}
+                except: pass
+            snap['cells'][(cell.row, cell.column)] = entry
+    for cl, cd in ws_src.column_dimensions.items():
+        snap['col_widths'][cl] = cd.width
+    for ri, rd in ws_src.row_dimensions.items():
+        snap['row_heights'][ri] = rd.height
+    snap['merges'] = [str(mg) for mg in ws_src.merged_cells.ranges]
+    snap['max_row'] = ws_src.max_row
+    snap['max_col'] = ws_src.max_column
+    return snap
+
+def apply_snapshot(ws, snap):
+    """Applique le snapshot sur une feuille vierge"""
+    for (r, c), entry in snap['cells'].items():
+        nc = ws.cell(row=r, column=c)
+        nc.value = entry['value']
+        s = entry.get('style')
+        if not s: continue
+        try:
+            f = s['font']
+            nc.font = Font(name=f['name'], size=f['size'], bold=f['bold'],
+                           italic=f['italic'], underline=f['underline'],
+                           strike=f['strike'], color=f['color'], vertAlign=f['vertAlign'])
+        except: pass
+        try:
+            fill = s['fill']
+            if fill and fill[0] == 'solid':
+                nc.fill = PatternFill(start_color=fill[1], end_color=fill[1], fill_type='solid')
+        except: pass
+        try:
+            bl, br, bt, bb = s['border']
+            def ms(t):
+                return Side(style=t[0], color=t[1]) if t[0] else Side()
+            nc.border = Border(left=ms(bl), right=ms(br), top=ms(bt), bottom=ms(bb))
+        except: pass
+        try:
+            a = s['align']
+            nc.alignment = Alignment(horizontal=a['horizontal'], vertical=a['vertical'],
+                                     wrap_text=a['wrap_text'], shrink_to_fit=a['shrink_to_fit'],
+                                     indent=a['indent'], text_rotation=a['text_rotation'])
+        except: pass
+        try:
+            nc.number_format = s['number_format']
+        except: pass
+    for cl, w in snap['col_widths'].items():
+        ws.column_dimensions[cl].width = w
+    for ri, h in snap['row_heights'].items():
+        ws.row_dimensions[ri].height = h
+    for mg in snap['merges']:
+        try: ws.merge_cells(mg)
+        except: pass
+
 def generer_template_colorie(template_path, planning_classes, annee_debut, output_path):
+    # Charger le template UNE SEULE FOIS et le mettre en mémoire
     wb_tpl = load_workbook(template_path)
-    struct = detect_structure(wb_tpl.active)
+    ws_src = wb_tpl.active
+    struct = detect_structure(ws_src)
     cc = struct['class_cols']; colors = struct['class_colors']
     fdr = struct['first_data_row']; dlc = struct['day_label_col']
+
+    snap = snapshot_template(ws_src)
+    del wb_tpl  # libérer la mémoire immédiatement
 
     ci = 0
     for nom in cc:
@@ -372,26 +461,11 @@ def generer_template_colorie(template_path, planning_classes, annee_debut, outpu
     total = 0
 
     for (mois, annee) in mois_scolaire:
-        wb_tmp = load_workbook(template_path); ws_src = wb_tmp.active
         ws = wb_out.create_sheet(title=f"{MOIS_FR[mois]} {annee}")
-
-        # Copie des cellules avec la fonction compatible Python 3.14
-        for row in ws_src.iter_rows():
-            for cell in row:
-                nc = ws.cell(row=cell.row, column=cell.column)
-                nc.value = cell.value
-                if cell.has_style:
-                    copy_cell_style(cell, nc)
-
-        for cl, cd in ws_src.column_dimensions.items():
-            ws.column_dimensions[cl].width = cd.width
-        for ri, rd in ws_src.row_dimensions.items():
-            ws.row_dimensions[ri].height = rd.height
-        for mg in ws_src.merged_cells.ranges:
-            ws.merge_cells(str(mg))
+        apply_snapshot(ws, snap)  # copie depuis le dict en mémoire
 
         for ri in range(1, 4):
-            for ci2 in range(1, ws.max_column+1):
+            for ci2 in range(1, snap['max_col']+1):
                 v = ws.cell(row=ri, column=ci2).value
                 if isinstance(v, str) and re.search(r'20\d\d', v):
                     ws.cell(row=ri, column=ci2).value = f"{MOIS_FR[mois].upper()} {annee}"

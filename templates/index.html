@@ -329,11 +329,13 @@ footer{text-align:center;padding:28px;font-size:12px;color:var(--muted);border-t
   <div class="panel" id="panel-vierge" style="display:none">
 
     <div class="info-box">
-      <strong>Comment ça marche ?</strong> Uploadez le template de référence, choisissez la plage de mois.
-      Le système génère jusqu'à 12 fichiers et les livre dans un ZIP (ou directement si 1 seul mois).
+      <strong>Comment ça marche ?</strong> Uploadez le template de référence, définissez votre plage de mois
+      et choisissez le format. Le système génère jusqu'à 12 mois en une fois.
     </div>
 
     <div class="steps">
+
+      <!-- Étape 01 : template -->
       <div class="card" style="border-color:#D4B896;">
         <div class="step-tag" style="color:var(--orange);">Étape 01</div>
         <h2>Template de référence</h2>
@@ -346,66 +348,67 @@ footer{text-align:center;padding:28px;font-size:12px;color:var(--muted);border-t
         <div class="file-list" id="fl-v-template"></div>
       </div>
 
+      <!-- Étape 02 : plage de mois -->
       <div class="card" style="border-color:#D4B896;">
         <div class="step-tag" style="color:var(--orange);">Étape 02</div>
         <h2>Plage de mois</h2>
-        <p>Choisissez le mois de début et le mois de fin (max 12 mois).</p>
+        <p>De quel mois à quel mois ? (max 12 mois)</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px;">
           <div>
             <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Début</div>
-            <select class="year-select" id="v-mois-debut" onchange="checkVierge()" style="width:100%;margin-bottom:8px;">
-              <option value="1">Janvier</option><option value="2">Février</option>
-              <option value="3">Mars</option><option value="4">Avril</option>
-              <option value="5">Mai</option><option value="6">Juin</option>
-              <option value="7">Juillet</option><option value="8">Août</option>
-              <option value="9">Septembre</option><option value="10">Octobre</option>
-              <option value="11">Novembre</option><option value="12">Décembre</option>
+            <select class="year-select" id="v-mois-debut" onchange="updateVierge()" style="width:100%;margin-bottom:8px;">
+              <option value="1">Janvier</option><option value="2">Février</option><option value="3">Mars</option>
+              <option value="4">Avril</option><option value="5">Mai</option><option value="6">Juin</option>
+              <option value="7">Juillet</option><option value="8">Août</option><option value="9">Septembre</option>
+              <option value="10" selected>Octobre</option><option value="11">Novembre</option><option value="12">Décembre</option>
             </select>
-            <select class="year-select" id="v-annee-debut" onchange="checkVierge()" style="width:100%;">
-              <option value="2025">2025</option><option value="2026" selected>2026</option>
-              <option value="2027">2027</option><option value="2028">2028</option>
+            <select class="year-select" id="v-annee-debut" onchange="updateVierge()" style="width:100%;">
+              <option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option><option value="2028">2028</option>
             </select>
           </div>
           <div>
             <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Fin</div>
-            <select class="year-select" id="v-mois-fin" onchange="checkVierge()" style="width:100%;margin-bottom:8px;">
-              <option value="1">Janvier</option><option value="2">Février</option>
-              <option value="3">Mars</option><option value="4">Avril</option>
-              <option value="5">Mai</option><option value="6">Juin</option>
-              <option value="7">Juillet</option><option value="8">Août</option>
-              <option value="9">Septembre</option><option value="10">Octobre</option>
-              <option value="11">Novembre</option><option value="12" selected>Décembre</option>
+            <select class="year-select" id="v-mois-fin" onchange="updateVierge()" style="width:100%;margin-bottom:8px;">
+              <option value="1">Janvier</option><option value="2">Février</option><option value="3">Mars</option>
+              <option value="4">Avril</option><option value="5">Mai</option><option value="6">Juin</option>
+              <option value="7">Juillet</option><option value="8">Août</option><option value="9">Septembre</option>
+              <option value="10">Octobre</option><option value="11">Novembre</option><option value="12" selected>Décembre</option>
             </select>
-            <select class="year-select" id="v-annee-fin" onchange="checkVierge()" style="width:100%;">
-              <option value="2025">2025</option><option value="2026" selected>2026</option>
-              <option value="2027">2027</option><option value="2028">2028</option>
+            <select class="year-select" id="v-annee-fin" onchange="updateVierge()" style="width:100%;">
+              <option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option><option value="2028">2028</option>
             </select>
           </div>
         </div>
-        <div id="v-range-info" style="margin-top:12px;font-size:12px;color:var(--muted);"></div>
+        <div id="v-range-info" style="margin-top:12px;font-size:12.5px;font-weight:500;color:var(--orange);min-height:18px;"></div>
       </div>
 
+      <!-- Étape 03 : format -->
       <div class="card step-full" style="border-color:#D4B896;">
         <div class="step-tag" style="color:var(--orange);">Étape 03</div>
         <h2>Format de sortie</h2>
-        <p>Choisissez comment recevoir vos fichiers (uniquement pour plusieurs mois).</p>
-        <div class="format-toggle">
-          <button class="fmt-btn on" id="fmt-zip" onclick="setFormat('zip')">
-            <span class="fmt-icon">🗜️</span>ZIP
-            <small>1 fichier .xlsx par mois</small>
+        <p>Comment voulez-vous recevoir les fichiers générés ?</p>
+        <div style="display:flex;gap:12px;margin-top:8px;">
+          <button id="vbtn-zip" onclick="setFormatV('zip')"
+            style="flex:1;border:2px solid var(--orange);background:var(--orange);color:white;border-radius:12px;padding:16px;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center;transition:all .2s;">
+            <div style="font-size:26px;margin-bottom:6px;">🗜️</div>
+            <div style="font-weight:600;font-size:13px;">ZIP</div>
+            <div style="font-size:11px;opacity:.85;margin-top:3px;">1 fichier .xlsx par mois<br>dans une archive</div>
           </button>
-          <button class="fmt-btn" id="fmt-excel" onclick="setFormat('excel')">
-            <span class="fmt-icon">📊</span>Excel multi-feuilles
-            <small>1 fichier, 1 onglet par mois</small>
+          <button id="vbtn-excel" onclick="setFormatV('excel')"
+            style="flex:1;border:2px solid var(--border);background:var(--surface);color:var(--muted);border-radius:12px;padding:16px;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center;transition:all .2s;">
+            <div style="font-size:26px;margin-bottom:6px;">📊</div>
+            <div style="font-weight:600;font-size:13px;">Excel multi-feuilles</div>
+            <div style="font-size:11px;opacity:.75;margin-top:3px;">1 seul fichier .xlsx<br>avec 1 onglet par mois</div>
           </button>
         </div>
       </div>
-    </div>
+
+    </div><!-- /steps -->
 
     <div class="action-row">
       <button class="btn-gen orange" id="btn-vierge" onclick="genererVierge()" disabled>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-        Générer les templates
+        Générer
       </button>
       <div class="action-hint" id="hint-vierge">Uploadez le template et choisissez la plage.</div>
     </div>
@@ -415,7 +418,7 @@ footer{text-align:center;padding:28px;font-size:12px;color:var(--muted);border-t
     </div>
 
     <div id="result-vierge" style="display:none;background:var(--orange);border-radius:16px;padding:24px;margin-top:20px;align-items:center;gap:20px;">
-      <div style="font-size:38px;flex-shrink:0;">📅</div>
+      <div style="font-size:38px;flex-shrink:0;" id="result-vierge-icon">📅</div>
       <div style="flex:1;color:white;">
         <h3 style="font-family:'Fraunces',serif;font-size:20px;font-weight:500;margin-bottom:3px;">Templates générés !</h3>
         <p id="rmeta-vierge" style="font-size:13px;opacity:.85;">—</p>
@@ -425,13 +428,14 @@ footer{text-align:center;padding:28px;font-size:12px;color:var(--muted);border-t
 
     <div class="stats" id="stats-vierge" style="display:none">
       <div class="stat"><div class="val" style="color:var(--orange)" id="sv1">—</div><div class="lbl">Mois générés</div></div>
-      <div class="stat"><div class="val" style="color:var(--orange)" id="sv2">—</div><div class="lbl">Jours ouvrés total</div></div>
+      <div class="stat"><div class="val" style="color:var(--orange)" id="sv2">—</div><div class="lbl">Jours ouvrés</div></div>
       <div class="stat"><div class="val" style="color:var(--orange)" id="sv3">✓</div><div class="lbl">Fusions corrigées</div></div>
       <div class="stat"><div class="val" style="color:var(--orange)" id="sv4">✓</div><div class="lbl">Dates mises à jour</div></div>
     </div>
 
     <div class="alert warn" id="alert-vierge"><span>⚠️</span><span id="atxt-vierge"></span></div>
   </div>
+
 </div>
 <footer>PlanniPro · Centre de formation · Données supprimées après téléchargement</footer>
 
@@ -565,22 +569,27 @@ async function genererPlanning(){
   }finally{checkPlan();}
 }
 // ── Panel 3 (template vierge) ──
-const sv = {template: [], format: 'zip'};
+const sv = {template: []};
 let viergeFormat = 'zip';
-function setFormat(f){
-  viergeFormat=f;
-  ['zip','excel'].forEach(x=>document.getElementById('fmt-'+x).className='fmt-btn'+(x===f?' on':''));
-}
-const MOIS_NOMS = ['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
 function dropV(e){e.preventDefault();e.currentTarget.classList.remove('over');addFileV(e.dataTransfer.files);}
-function addFileV(files){sv.template=[files[0]];renderFileV();checkVierge();}
+function addFileV(files){sv.template=[files[0]];renderFileV();updateVierge();}
 function renderFileV(){
-  document.getElementById('fl-v-template').innerHTML=sv.template.map(f=>
-    `<div class="file-chip" style="background:var(--orange-l);border-color:#D4B896;color:var(--orange)">
-      <span>📄</span><span class="name">${f.name}</span>
-      <button onclick="sv.template=[];renderFileV();checkVierge()">×</button>
-    </div>`).join('');
+  document.getElementById('fl-v-template').innerHTML = sv.template.length
+    ? `<div class="file-chip" style="background:var(--orange-l);border-color:#D4B896;color:var(--orange)">
+        <span>📄</span><span class="name">${sv.template[0].name}</span>
+        <button onclick="sv.template=[];renderFileV();updateVierge()">×</button>
+       </div>`
+    : '';
+}
+
+function setFormatV(f){
+  viergeFormat = f;
+  const ON  = 'flex:1;border:2px solid var(--orange);background:var(--orange);color:white;border-radius:12px;padding:16px;cursor:pointer;font-family:\'DM Sans\',sans-serif;text-align:center;transition:all .2s;';
+  const OFF = 'flex:1;border:2px solid var(--border);background:var(--surface);color:var(--muted);border-radius:12px;padding:16px;cursor:pointer;font-family:\'DM Sans\',sans-serif;text-align:center;transition:all .2s;';
+  document.getElementById('vbtn-zip').style.cssText   = f==='zip'   ? ON : OFF;
+  document.getElementById('vbtn-excel').style.cssText = f==='excel' ? ON : OFF;
+  updateVierge();
 }
 
 function getNbMois(){
@@ -592,40 +601,27 @@ function getNbMois(){
   return (af-ad)*12+(mf-md)+1;
 }
 
-function setFormat(f){
-  sv.format=f;
-  const zl=document.getElementById('fmt-zip-label');
-  const el=document.getElementById('fmt-excel-label');
-  if(f==='zip'){
-    zl.style.cssText='flex:1;border:2px solid var(--orange);border-radius:12px;padding:14px 16px;cursor:pointer;background:var(--orange);color:white;text-align:center;';
-    el.style.cssText='flex:1;border:2px solid var(--border);border-radius:12px;padding:14px 16px;cursor:pointer;background:var(--surface);color:var(--muted);text-align:center;';
-  } else {
-    el.style.cssText='flex:1;border:2px solid var(--orange);border-radius:12px;padding:14px 16px;cursor:pointer;background:var(--orange);color:white;text-align:center;';
-    zl.style.cssText='flex:1;border:2px solid var(--border);border-radius:12px;padding:14px 16px;cursor:pointer;background:var(--surface);color:var(--muted);text-align:center;';
-  }
-  checkVierge();
-}
-
-function checkVierge(){
-  const nb=getNbMois();
-  const ok=sv.template.length>0 && nb>=1 && nb<=12;
-  document.getElementById('btn-vierge').disabled=!ok;
-  const hint=document.getElementById('hint-vierge');
-  const info=document.getElementById('v-range-info');
-  if(!sv.template.length){
-    hint.textContent='Uploadez le template de référence.';hint.className='action-hint';
-    info.textContent='';
-  } else if(nb<1){
-    hint.textContent='⚠️ La date de fin doit être après la date de début.';hint.className='action-hint';
-    info.textContent='';
+function updateVierge(){
+  const nb  = getNbMois();
+  const ok  = sv.template.length>0 && nb>=1 && nb<=12;
+  document.getElementById('btn-vierge').disabled = !ok;
+  const info = document.getElementById('v-range-info');
+  const hint = document.getElementById('hint-vierge');
+  if(nb===0){
+    info.textContent = '⚠️ La date de fin doit être après le début';
+    hint.textContent = 'Corrigez la plage de mois.'; hint.className='action-hint';
   } else if(nb>12){
-    hint.textContent=`⚠️ Maximum 12 mois (vous en avez sélectionné ${nb}).`;hint.className='action-hint';
-    info.textContent='';
+    info.textContent = `⚠️ ${nb} mois sélectionnés — maximum 12`;
+    hint.textContent = 'Réduisez la plage à 12 mois max.'; hint.className='action-hint';
   } else {
-    const fmtLabel=nb<=1?'.xlsx':sv.format==='zip'?'.zip (un fichier par mois)':'.xlsx multi-feuilles';
-    const label=nb===1?`1 mois sélectionné → ${fmtLabel}`:`${nb} mois sélectionnés → ${fmtLabel}`;
-    hint.textContent=`✓ Template prêt · ${label}`;hint.className='action-hint';
-    info.innerHTML=`<span style="color:var(--orange);font-weight:600;">${nb} mois</span> à générer`;
+    const fmtLabel = nb===1 ? '.xlsx' : viergeFormat==='zip' ? 'ZIP (1 fichier par mois)' : 'Excel multi-feuilles';
+    info.textContent = `${nb} mois sélectionné${nb>1?'s':''} → ${fmtLabel}`;
+    if(!sv.template.length){
+      hint.textContent = 'Uploadez le template de référence.'; hint.className='action-hint';
+    } else {
+      hint.textContent = `✓ Prêt — ${nb} mois en format ${viergeFormat==='zip'?'ZIP':'Excel multi-feuilles'}`;
+      hint.className='action-hint ok';
+    }
   }
 }
 
@@ -643,18 +639,19 @@ async function genererVierge(){
   fd.append('mois_debut',  document.getElementById('v-mois-debut').value);
   fd.append('annee_fin',   document.getElementById('v-annee-fin').value);
   fd.append('mois_fin',    document.getElementById('v-mois-fin').value);
-  fd.append('format',       sv.format);
+  fd.append('format',      viergeFormat);
   try{
-    const res=await fetch('/generer-template-vierge',{method:'POST',body:fd});
-    const data=await res.json();
+    const res  = await fetch('/generer-template-vierge',{method:'POST',body:fd});
+    const data = await res.json();
     document.getElementById('progress-vierge').classList.remove('show');
     if(data.error){
       document.getElementById('atxt-vierge').textContent='Erreur : '+data.error;
       document.getElementById('alert-vierge').classList.add('show');
       return;
     }
-    const icon=data.format==='zip'?'🗜️ ZIP':data.format==='excel'?'📊 Excel multi-feuilles':'📄 XLSX';
-    document.getElementById('rmeta-vierge').textContent=`${data.mois} · ${data.nb_mois} mois · ${data.nb_jours} jours ouvrés · ${icon}`;
+    const icon = data.format==='zip' ? '🗜️' : data.format==='excel' ? '📊' : '📄';
+    document.getElementById('result-vierge-icon').textContent = icon;
+    document.getElementById('rmeta-vierge').textContent=`${data.mois} · ${data.nb_mois} mois · ${data.nb_jours} jours ouvrés`;
     document.getElementById('result-vierge').style.display='flex';
     document.getElementById('dl-vierge').onclick=()=>{
       const a=document.createElement('a');
@@ -668,7 +665,7 @@ async function genererVierge(){
     document.getElementById('progress-vierge').classList.remove('show');
     document.getElementById('atxt-vierge').textContent='Erreur : '+e.message;
     document.getElementById('alert-vierge').classList.add('show');
-  }finally{checkVierge();}
+  }finally{updateVierge();}
 }
 </script>
 </body>

@@ -799,7 +799,7 @@ def generer_template_vierge_route():
         os.makedirs(wd, exist_ok=True)
 
         def save(f):
-            p = os.path.join(wd, secure_filename(f.filename) if f.filename else 'template.xlsx')
+            p = os.path.join(wd, os.path.basename(f.filename) if f.filename else 'template.xlsx')
             f.save(p)
             return p
         tf = request.files.get('template')

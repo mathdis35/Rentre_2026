@@ -558,63 +558,67 @@ def generer_template_mois(template_path, output_path, annee, mois):
 
 
 # ─── Excel multi-feuilles (une feuille par mois) ─────────────────────────────
+def _copier_feuille(ws_src, ws_dst):
+    """
+    Copie complète d'une feuille vers une autre (workbooks différents).
+    Utilise copy.copy() pour les styles → pas de problème d'indices croisés.
+    """
+    for row in ws_src.iter_rows():
+        for cell in row:
+            nc = ws_dst.cell(row=cell.row, column=cell.column)
+            nc.value = cell.value
+            if cell.has_style:
+                nc.font          = copy.copy(cell.font)
+                nc.fill          = copy.copy(cell.fill)
+                nc.border        = copy.copy(cell.border)
+                nc.alignment     = copy.copy(cell.alignment)
+                nc.number_format = cell.number_format
+    for col, cd in ws_src.column_dimensions.items():
+        ws_dst.column_dimensions[col].width = cd.width
+    for r, rd in ws_src.row_dimensions.items():
+        if rd.height:
+            ws_dst.row_dimensions[r].height = rd.height
+    seen = set()
+    for mg in ws_src.merged_cells.ranges:
+        k = str(mg)
+        if k not in seen:
+            seen.add(k)
+            try:
+                ws_dst.merge_cells(k)
+            except Exception:
+                pass
+
+
 def generer_excel_multifeuilles(template_path, mois_liste, output_path):
     """
     Génère un Excel multi-feuilles (1 onglet par mois).
-    Optimisé : charge le template UNE seule fois, copie via _style (x70 plus rapide).
-    ~3s pour 12 mois.
+    Stratégie en 2 étapes :
+      1. Générer chaque mois individuellement via generer_template_mois()
+         (fonction existante, testée, fiable)
+      2. Fusionner les fichiers dans un seul workbook via _copier_feuille()
+         (copy.copy des styles → aucun problème d'indices croisés)
     """
-    wb_tpl = load_workbook(template_path)
-    ws_tpl = wb_tpl.active
-
-    # Détecter la ligne grise de fermeture depuis le template (valide car styles intacts)
-    grey_row_tpl = None
-    for r in range(ws_tpl.max_row, 0, -1):
-        cell = ws_tpl.cell(row=r, column=2)
-        if cell.fill and cell.fill.fgColor and cell.fill.fgColor.type == 'rgb':
-            if cell.fill.fgColor.rgb == 'FFC0C0C0':
-                grey_row_tpl = r
-                break
+    import tempfile
 
     wb_out = Workbook()
     wb_out.remove(wb_out.active)
     total_jours = 0
 
     for (annee, mois) in mois_liste:
+        # Étape 1 : générer le mois dans un fichier temporaire
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
+            tmp_path = tmp.name
+        nb_jours = generer_template_mois(template_path, tmp_path, annee, mois)
+        total_jours += nb_jours
+
+        # Étape 2 : copier la feuille dans wb_out
+        wb_tmp = load_workbook(tmp_path)
+        ws_src = wb_tmp.active
         sheet_name = f"{MOIS_FR[mois][:4]} {annee}"
         ws_dst = wb_out.create_sheet(title=sheet_name)
-
-        # Copier cellules via _style (ultra-rapide — copie l'index de style, pas le style entier)
-        for row in ws_tpl.iter_rows():
-            for cell in row:
-                nc = ws_dst.cell(row=cell.row, column=cell.column)
-                nc.value = cell.value
-                if cell._style:
-                    nc._style = copy.copy(cell._style)
-
-        # Copier largeurs colonnes
-        for col, cd in ws_tpl.column_dimensions.items():
-            ws_dst.column_dimensions[col].width = cd.width
-
-        # Copier hauteurs lignes
-        for r, rd in ws_tpl.row_dimensions.items():
-            if rd.height:
-                ws_dst.row_dimensions[r].height = rd.height
-
-        # Copier fusions (dédupliquées pour éviter crash openpyxl)
-        seen_merges = set()
-        for mg in ws_tpl.merged_cells.ranges:
-            key = str(mg)
-            if key not in seen_merges:
-                seen_merges.add(key)
-                try:
-                    ws_dst.merge_cells(key)
-                except Exception:
-                    pass
-
-        # Appliquer le mois (on passe grey_row depuis le template)
-        nb_jours = _appliquer_mois_sur_feuille(ws_dst, annee, mois, grey_row_tpl)
-        total_jours += nb_jours
+        _copier_feuille(ws_src, ws_dst)
+        wb_tmp.close()
+        os.unlink(tmp_path)
 
     wb_out.save(output_path)
     return total_jours

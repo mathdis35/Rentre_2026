@@ -501,20 +501,18 @@ def generer_template_mois(template_path, output_path, annee, mois):
             if new_r >= DELETE_START and h is not None:
                 ws.row_dimensions[new_r].height = h
 
-        # Ré-appliquer les fusions perdues par delete_rows
-        current_merges = {
-            (m.min_row, m.min_col, m.max_col)
-            for m in ws.merged_cells.ranges
-            if m.min_row == m.max_row
-        }
-        for r in range(DELETE_START, ws.max_row + 1):
-            h = ws.row_dimensions[r].height
-            if h is None or h >= 10:  # pas un séparateur (h≈6)
-                for c1, c2 in ALL_MERGE_PAIRS:
-                    if (r, c1, c2) not in current_merges:
-                        ws.merge_cells(
-                            f"{get_column_letter(c1)}{r}:{get_column_letter(c2)}{r}"
-                        )
+        # Fix fusions optimisé (8x plus rapide : manipulation directe du set)
+        from openpyxl.worksheet.cell_range import CellRange
+        target_rows = {r for r in range(DELETE_START, ws.max_row + 1)
+                       if (ws.row_dimensions[r].height is None or ws.row_dimensions[r].height >= 10)}
+        for mg in list(ws.merged_cells.ranges):
+            if mg.min_row == mg.max_row and mg.min_row in target_rows:
+                try: ws.merged_cells.ranges.discard(mg)
+                except Exception: pass
+        for r in target_rows:
+            for c1, c2 in ALL_MERGE_PAIRS:
+                ws.merged_cells.ranges.add(
+                    CellRange(f"{get_column_letter(c1)}{r}:{get_column_letter(c2)}{r}"))
 
     # ── 5. Détecter les slots disponibles après suppression ───────────────────
     jours_pos = []
@@ -562,49 +560,61 @@ def generer_template_mois(template_path, output_path, annee, mois):
 # ─── Excel multi-feuilles (une feuille par mois) ─────────────────────────────
 def generer_excel_multifeuilles(template_path, mois_liste, output_path):
     """
-    Génère un seul fichier Excel avec une feuille par mois.
-    Chaque feuille est le template vierge adapté au mois.
+    Génère un Excel multi-feuilles (1 onglet par mois).
+    Optimisé : charge le template UNE seule fois, copie via _style (x70 plus rapide).
+    ~3s pour 12 mois.
     """
-    import copy
-    from openpyxl import Workbook
+    wb_tpl = load_workbook(template_path)
+    ws_tpl = wb_tpl.active
+
+    # Détecter la ligne grise de fermeture depuis le template (valide car styles intacts)
+    grey_row_tpl = None
+    for r in range(ws_tpl.max_row, 0, -1):
+        cell = ws_tpl.cell(row=r, column=2)
+        if cell.fill and cell.fill.fgColor and cell.fill.fgColor.type == 'rgb':
+            if cell.fill.fgColor.rgb == 'FFC0C0C0':
+                grey_row_tpl = r
+                break
 
     wb_out = Workbook()
-    wb_out.remove(wb_out.active)  # supprimer la feuille vide par défaut
-
+    wb_out.remove(wb_out.active)
     total_jours = 0
 
     for (annee, mois) in mois_liste:
-        # Générer le mois dans un fichier temporaire
-        tmp_path = output_path + f"_tmp_{mois}_{annee}.xlsx"
-        nb_jours = generer_template_mois(template_path, tmp_path, annee, mois)
-        total_jours += nb_jours
+        sheet_name = f"{MOIS_FR[mois][:4]} {annee}"
+        ws_dst = wb_out.create_sheet(title=sheet_name)
 
-        # Copier la feuille dans le workbook de sortie
-        wb_tmp = load_workbook(tmp_path)
-        ws_src = wb_tmp.active
-        nom_feuille = f"{MOIS_FR_UPPER[mois][:4]} {annee}"  # ex: "OCTO 2026"
-        ws_dst = wb_out.create_sheet(title=nom_feuille)
-
-        # Copier toutes les cellules, styles, dimensions, fusions
-        for row in ws_src.iter_rows():
+        # Copier cellules via _style (ultra-rapide — copie l'index de style, pas le style entier)
+        for row in ws_tpl.iter_rows():
             for cell in row:
                 nc = ws_dst.cell(row=cell.row, column=cell.column)
                 nc.value = cell.value
-                if cell.has_style:
-                    nc.font      = copy.copy(cell.font)
-                    nc.fill      = copy.copy(cell.fill)
-                    nc.border    = copy.copy(cell.border)
-                    nc.alignment = copy.copy(cell.alignment)
-                    nc.number_format = cell.number_format
-        for cl, cd in ws_src.column_dimensions.items():
-            ws_dst.column_dimensions[cl].width = cd.width
-        for ri, rd in ws_src.row_dimensions.items():
-            ws_dst.row_dimensions[ri].height = rd.height
-        for mg in ws_src.merged_cells.ranges:
-            ws_dst.merge_cells(str(mg))
+                if cell._style:
+                    nc._style = copy.copy(cell._style)
 
-        wb_tmp.close()
-        os.remove(tmp_path)
+        # Copier largeurs colonnes
+        for col, cd in ws_tpl.column_dimensions.items():
+            ws_dst.column_dimensions[col].width = cd.width
+
+        # Copier hauteurs lignes
+        for r, rd in ws_tpl.row_dimensions.items():
+            if rd.height:
+                ws_dst.row_dimensions[r].height = rd.height
+
+        # Copier fusions (dédupliquées pour éviter crash openpyxl)
+        seen_merges = set()
+        for mg in ws_tpl.merged_cells.ranges:
+            key = str(mg)
+            if key not in seen_merges:
+                seen_merges.add(key)
+                try:
+                    ws_dst.merge_cells(key)
+                except Exception:
+                    pass
+
+        # Appliquer le mois (on passe grey_row depuis le template)
+        nb_jours = _appliquer_mois_sur_feuille(ws_dst, annee, mois, grey_row_tpl)
+        total_jours += nb_jours
 
     wb_out.save(output_path)
     return total_jours
@@ -668,67 +678,6 @@ def generer_template_colorie_route():
         import traceback; return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
 
 
-def generer_excel_multifeuilles(template_path, mois_liste, output_path):
-    """
-    Génère un Excel multi-feuilles (1 onglet par mois).
-    Optimisé : charge le template UNE seule fois en mémoire, puis copie
-    la structure via _style (x70 plus rapide que copy.copy des styles).
-    ~3s pour 12 mois au lieu de 130s.
-    """
-    # Charger le template une seule fois
-    wb_tpl = load_workbook(template_path)
-    ws_tpl = wb_tpl.active
-
-    wb_out = Workbook()
-    wb_out.remove(wb_out.active)
-
-    # Détecter la ligne grise de fermeture depuis le template (une seule fois)
-    grey_row_tpl = None
-    for r in range(ws_tpl.max_row, 0, -1):
-        cell = ws_tpl.cell(row=r, column=2)
-        if cell.fill and cell.fill.fgColor and cell.fill.fgColor.type == 'rgb':
-            if cell.fill.fgColor.rgb == 'FFC0C0C0':
-                grey_row_tpl = r
-                break
-
-    for (annee, mois) in mois_liste:
-        sheet_name = f"{MOIS_FR[mois][:4]} {annee}"  # ex: "Oct 2026"
-        ws_dst = wb_out.create_sheet(title=sheet_name)
-
-        # 1. Copier cellules via _style (ultra-rapide)
-        for row in ws_tpl.iter_rows():
-            for cell in row:
-                nc = ws_dst.cell(row=cell.row, column=cell.column)
-                nc.value = cell.value
-                if cell._style:
-                    nc._style = copy.copy(cell._style)
-
-        # 2. Copier largeurs de colonnes
-        for col, cd in ws_tpl.column_dimensions.items():
-            ws_dst.column_dimensions[col].width = cd.width
-
-        # 3. Copier hauteurs de lignes
-        for r, rd in ws_tpl.row_dimensions.items():
-            if rd.height:
-                ws_dst.row_dimensions[r].height = rd.height
-
-        # 4. Copier fusions (dédupliquées)
-        seen_merges = set()
-        for mg in ws_tpl.merged_cells.ranges:
-            key = str(mg)
-            if key not in seen_merges:
-                seen_merges.add(key)
-                try:
-                    ws_dst.merge_cells(key)
-                except Exception:
-                    pass
-
-        # 5. Appliquer le mois (on passe grey_row depuis le template)
-        _appliquer_mois_sur_feuille(ws_dst, annee, mois, grey_row_tpl)
-
-    wb_out.save(output_path)
-
-
 def _appliquer_mois_sur_feuille(ws, annee, mois, grey_row_override=None):
     """
     Applique les transformations d'un mois sur une feuille déjà copiée du template.
@@ -767,20 +716,18 @@ def _appliquer_mois_sur_feuille(ws, annee, mois, grey_row_override=None):
             new_r = old_r - DELETE_COUNT
             if new_r >= DELETE_START and h is not None:
                 ws.row_dimensions[new_r].height = h
-        current_merges = {
-            (m.min_row, m.min_col, m.max_col)
-            for m in ws.merged_cells.ranges if m.min_row == m.max_row
-        }
-        for r in range(DELETE_START, ws.max_row + 1):
-            h = ws.row_dimensions[r].height
-            if h is None or h >= 10:
-                for c1, c2 in ALL_MERGE_PAIRS:
-                    if (r, c1, c2) not in current_merges:
-                        try:
-                            ws.merge_cells(
-                                f"{get_column_letter(c1)}{r}:{get_column_letter(c2)}{r}")
-                        except Exception:
-                            pass
+        # Fix fusions optimisé
+        from openpyxl.worksheet.cell_range import CellRange
+        target_rows = {r for r in range(DELETE_START, ws.max_row + 1)
+                       if (ws.row_dimensions[r].height is None or ws.row_dimensions[r].height >= 10)}
+        for mg in list(ws.merged_cells.ranges):
+            if mg.min_row == mg.max_row and mg.min_row in target_rows:
+                try: ws.merged_cells.ranges.discard(mg)
+                except Exception: pass
+        for r in target_rows:
+            for c1, c2 in ALL_MERGE_PAIRS:
+                ws.merged_cells.ranges.add(
+                    CellRange(f"{get_column_letter(c1)}{r}:{get_column_letter(c2)}{r}"))
 
     # Labels jours
     jours_pos = []

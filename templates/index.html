@@ -109,7 +109,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-
 .tag{display:inline-block;background:var(--green-l);color:var(--green);border-radius:5px;padding:2px 7px;font-size:11px;font-weight:500;margin:1px;}
 .alert{display:none;border-radius:10px;padding:13px 16px;font-size:13px;gap:10px;align-items:flex-start;margin-top:14px;line-height:1.45;}
 .alert.show{display:flex;}
-.alert.warn{background:var(--amber-l);border:1px solid #E8C5A5;color:var(--amber);}
+.alert.warn{background:var(--amber-l);border:1px solid #E8C5A5;color:var(--amber);white-space:pre-wrap;word-break:break-word;}
 .info-box{background:var(--blue-l);border:1.5px solid #B8CCE4;border-radius:12px;padding:16px 18px;margin-bottom:20px;font-size:13px;color:var(--blue);line-height:1.6;}
 .info-box strong{font-weight:600;}
 
@@ -645,7 +645,7 @@ async function genererVierge(){
     const data = await res.json();
     document.getElementById('progress-vierge').classList.remove('show');
     if(data.error){
-      document.getElementById('atxt-vierge').textContent='Erreur : '+data.error;
+      document.getElementById('atxt-vierge').textContent='Erreur : '+data.error+(data.trace?'\n\nDétail : '+data.trace:'');
       document.getElementById('alert-vierge').classList.add('show');
       return;
     }

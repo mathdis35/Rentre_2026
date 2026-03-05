@@ -827,27 +827,16 @@ def generer_template_vierge_route():
         if not mois_liste:
             return jsonify({'error': 'Plage de mois invalide'}), 400
 
-        fichiers_generes = []
-        total_jours = 0
-
-        for (annee, mois) in mois_liste:
-            nom_mois = MOIS_FR_UPPER[mois]
-            on = f"{nom_mois}_{annee}.xlsx"
-            op = os.path.join(wd, on)
-            nb_jours = generer_template_mois(tp, op, annee, mois)
-            fichiers_generes.append(on)
-            total_jours += nb_jours
-
         a_deb, m_deb = mois_liste[0]
         a_fin, m_fin = mois_liste[-1]
         label = f"{MOIS_FR_UPPER[m_deb]} {a_deb}" if len(mois_liste)==1 else f"{MOIS_FR_UPPER[m_deb]} {a_deb} → {MOIS_FR_UPPER[m_fin]} {a_fin}"
-        format_sortie = request.form.get('format', 'zip')  # 'zip' ou 'excel'
+        format_sortie = request.form.get('format', 'zip')
 
         if format_sortie == 'excel' and len(mois_liste) > 1:
-            # Excel multi-feuilles
+            # Excel multi-feuilles — generer_excel_multifeuilles génère ET fusionne
             excel_name = f"Templates_{MOIS_FR_UPPER[m_deb]}_{a_deb}_au_{MOIS_FR_UPPER[m_fin]}_{a_fin}.xlsx"
             excel_path = os.path.join(wd, excel_name)
-            generer_excel_multifeuilles(tp, mois_liste, excel_path)
+            total_jours = generer_excel_multifeuilles(tp, mois_liste, excel_path)
             return jsonify({
                 'fichier':    excel_name,
                 'session_id': sid,
@@ -856,9 +845,13 @@ def generer_template_vierge_route():
                 'nb_mois':    len(mois_liste),
                 'format':     'excel',
             })
+
         elif len(mois_liste) == 1:
-            # Un seul mois : retourner directement le .xlsx
-            on = fichiers_generes[0]
+            # Un seul mois : générer directement
+            nom_mois = MOIS_FR_UPPER[mois_liste[0][1]]
+            on = f"{nom_mois}_{mois_liste[0][0]}.xlsx"
+            op = os.path.join(wd, on)
+            total_jours = generer_template_mois(tp, op, mois_liste[0][0], mois_liste[0][1])
             return jsonify({
                 'fichier':    on,
                 'session_id': sid,
@@ -867,8 +860,18 @@ def generer_template_vierge_route():
                 'nb_mois':    1,
                 'format':     'xlsx',
             })
+
         else:
-            # ZIP (plusieurs fichiers séparés)
+            # ZIP — générer chaque mois puis zipper
+            fichiers_generes = []
+            total_jours = 0
+            for (annee, mois) in mois_liste:
+                nom_mois = MOIS_FR_UPPER[mois]
+                on = f"{nom_mois}_{annee}.xlsx"
+                op = os.path.join(wd, on)
+                nb = generer_template_mois(tp, op, annee, mois)
+                fichiers_generes.append(on)
+                total_jours += nb
             zip_name = f"Templates_{MOIS_FR_UPPER[m_deb]}_{a_deb}_au_{MOIS_FR_UPPER[m_fin]}_{a_fin}.zip"
             zip_path = os.path.join(wd, zip_name)
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:

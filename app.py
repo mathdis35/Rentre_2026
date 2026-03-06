@@ -578,13 +578,16 @@ def _copier_feuille(ws_src, ws_dst):
     for r, rd in ws_src.row_dimensions.items():
         if rd.height:
             ws_dst.row_dimensions[r].height = rd.height
+    # Bypass merge_cells() qui fait une vérification __contains__ O(n²) très lente
+    # On ajoute les fusions directement dans la collection interne
+    from openpyxl.worksheet.cell_range import CellRange
     seen = set()
     for mg in ws_src.merged_cells.ranges:
         k = str(mg)
         if k not in seen:
             seen.add(k)
             try:
-                ws_dst.merge_cells(k)
+                ws_dst.merged_cells.ranges.add(CellRange(k))
             except Exception:
                 pass
 

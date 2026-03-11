@@ -237,6 +237,156 @@ def parse_tableau_formateurs(filepath):
         except: pass
     return dict(assignments)
 
+# ─── Parseur tableau formateurs v2 (format tabulaire) ────────────────────────
+
+def parse_tableau_formateurs_v2(filepath):
+    """
+    Parse le nouveau format d'affectations : 1 ligne = 1 affectation.
+
+    Feuille cible : 'AFFECTATIONS' (ou première feuille si absente).
+    En-tête auto-détecté dans les 10 premières lignes.
+
+    Colonnes OBLIGATOIRES : CLASSE, FORMATEUR, MATIERE, HEURES_ANNEE
+    Colonnes OPTIONNELLES : PRIORITE (défaut 1), NOTES (ignoré), ACTIF (défaut OUI)
+
+    Retourne un dict compatible avec assigner() :
+      { "BTS MCO 73": [
+            {"formateur": "J.Christophe", "matiere": "Gestion",
+             "heures": 100.0, "heures_faites": 0, "priorite": 1},
+            ...
+        ], ...
+      }
+    """
+    try:
+        wb = load_workbook(filepath, data_only=True)
+    except Exception as e:
+        raise ValueError(f"Impossible d'ouvrir {Path(filepath).name} : {e}")
+
+    ws = wb['AFFECTATIONS'] if 'AFFECTATIONS' in wb.sheetnames else wb.active
+
+    # ── Détecter la ligne d'en-tête ─────────────────────────────────────────
+    header_row = None
+    col_map    = {}
+    for r in range(1, min(ws.max_row + 1, 10)):
+        row_vals = [ws.cell(r, c).value for c in range(1, ws.max_column + 1)]
+        upper    = [str(v).strip().upper() if v is not None else '' for v in row_vals]
+        if 'CLASSE' in upper and 'FORMATEUR' in upper and 'MATIERE' in upper:
+            header_row = r
+            for i, label in enumerate(upper):
+                if label:
+                    col_map[label] = i + 1   # 1-indexé
+            break
+
+    if header_row is None:
+        raise ValueError(
+            "En-tête introuvable dans la feuille AFFECTATIONS. "
+            "Colonnes attendues : CLASSE, FORMATEUR, MATIERE, HEURES_ANNEE"
+        )
+
+    # ── Valider les colonnes obligatoires ────────────────────────────────────
+    manquantes = [col for col in ('CLASSE', 'FORMATEUR', 'MATIERE', 'HEURES_ANNEE')
+                  if col not in col_map]
+    if manquantes:
+        raise ValueError(f"Colonnes obligatoires manquantes : {', '.join(manquantes)}")
+
+    c_classe = col_map['CLASSE']
+    c_form   = col_map['FORMATEUR']
+    c_mat    = col_map['MATIERE']
+    c_h      = col_map['HEURES_ANNEE']
+    c_prio   = col_map.get('PRIORITE')
+    c_actif  = col_map.get('ACTIF')
+
+    # ── Lire les affectations ────────────────────────────────────────────────
+    assignments = defaultdict(list)
+    lignes_ignorees = 0
+
+    for r in range(header_row + 1, ws.max_row + 1):
+        classe    = ws.cell(r, c_classe).value
+        formateur = ws.cell(r, c_form).value
+        matiere   = ws.cell(r, c_mat).value
+        heures_v  = ws.cell(r, c_h).value
+        actif_v   = ws.cell(r, c_actif).value if c_actif else 'OUI'
+        prio_v    = ws.cell(r, c_prio).value  if c_prio  else 1
+
+        # Ignorer lignes vides
+        if not (classe and formateur and matiere):
+            continue
+
+        # Ignorer lignes ACTIF = NON
+        if str(actif_v or 'OUI').strip().upper() == 'NON':
+            lignes_ignorees += 1
+            continue
+
+        # Valider et normaliser les heures (obligatoires, > 0)
+        try:
+            heures = float(str(heures_v).replace(',', '.').strip())
+        except (TypeError, ValueError):
+            lignes_ignorees += 1
+            continue
+        if heures <= 0:
+            lignes_ignorees += 1
+            continue
+
+        # Normaliser la priorité
+        try:
+            priorite = int(prio_v) if prio_v else 1
+        except (TypeError, ValueError):
+            priorite = 1
+
+        assignments[str(classe).strip()].append({
+            'formateur':     str(formateur).strip(),
+            'matiere':       str(matiere).strip(),
+            'heures':        heures,
+            'heures_faites': 0,        # requis par assigner()
+            'priorite':      priorite, # pour tri — assigner() l'ignore
+        })
+
+    # Trier chaque classe par priorité (1 = principal avant 2 = remplaçant)
+    for classe in assignments:
+        assignments[classe].sort(key=lambda x: x['priorite'])
+
+    # ── Log debug ────────────────────────────────────────────────────────────
+    nb_classes     = len(assignments)
+    nb_affectations = sum(len(v) for v in assignments.values())
+    nb_formateurs  = len({a['formateur'] for v in assignments.values() for a in v})
+    import logging
+    logging.info(
+        f"[parse_v2] {nb_classes} classes | {nb_formateurs} formateurs | "
+        f"{nb_affectations} affectations | {lignes_ignorees} lignes ignorées"
+    )
+    # Exposé aussi en attribut pour que la route puisse le retourner si besoin
+    result = dict(assignments)
+    result['_debug'] = {
+        'classes':      nb_classes,
+        'formateurs':   nb_formateurs,
+        'affectations': nb_affectations,
+        'ignores':      lignes_ignorees,
+    }
+    return result
+
+
+def _auto_parse_formateurs(filepath):
+    """
+    Sélecteur automatique : détecte le format du fichier et appelle
+    le bon parseur.
+
+    - Feuille AFFECTATIONS présente → parse_tableau_formateurs_v2()
+    - Sinon → parse_tableau_formateurs() (ancien format matriciel)
+
+    Permet une transition sans rupture : l'ancien fichier continue de
+    fonctionner tant qu'il n'est pas remplacé.
+    """
+    try:
+        wb     = load_workbook(filepath, data_only=True)
+        sheets = wb.sheetnames
+        wb.close()
+        if 'AFFECTATIONS' in sheets:
+            return parse_tableau_formateurs_v2(filepath)
+    except Exception:
+        pass
+    return parse_tableau_formateurs(filepath)
+
+
 # ─── Moteur assignation ───────────────────────────────────────────────────────
 def assigner(planning_classes, dispos_formateurs, affectations):
     dispo_idx = {d['nom']: d['dispo'] for d in dispos_formateurs}
@@ -281,11 +431,21 @@ def ecrire_planning(template_path, assignment, mois_cibles, output_path):
 
     for sn in wb.sheetnames:
         ws = wb[sn]; titre = ''
-        for ri in range(1, 4):
-            for ci in range(1, ws.max_column+1):
+        # PATCH 8 — lecture titre robuste : cherche une cellule contenant un nom de mois
+        # (pas juste la première cellule avec len>3, qui peut être le nom de l'école)
+        for ri in range(1, 5):
+            for ci in range(1, ws.max_column + 1):
                 v = ws.cell(row=ri, column=ci).value
-                if v and isinstance(v, str) and len(v.strip()) > 3:
-                    titre = v.upper(); break
+                if not (v and isinstance(v, str)): continue
+                for m_key in MOIS_ABBR:
+                    if m_key.upper() in v.upper():
+                        titre = v.upper()
+                        break
+                if titre: break
+            if titre: break
+        # Fallback : utiliser le nom de l'onglet (ex: "Sept 2026")
+        if not titre:
+            titre = sn.upper()
         mn, yr = None, None
         for m, mnum in MOIS_ABBR.items():
             if m.upper() in titre:
@@ -710,7 +870,10 @@ def generer():
 
         pcs    = [cl for cl in [parse_planning_classe(p) for p in cp] if cl]
         dispos = [parse_disponibilite(p) for p in dp]
-        aff    = parse_tableau_formateurs(fp)
+        aff    = _auto_parse_formateurs(fp)
+        # Extraire le log debug avant de passer aff à assigner()
+        # (_debug n'est présent qu'avec le nouveau parseur v2)
+        aff_debug = aff.pop('_debug', {})
         assignment, stats, heures = assigner(pcs, dispos, aff)
 
         mois_str = ', '.join(f"{MOIS_FR[m][:3]} {a}" for a, m in mois_liste)
@@ -726,12 +889,19 @@ def generer():
         ecrire_planning(tmp_multi, assignment, mois_set, op)
         try: os.unlink(tmp_multi)
         except: pass
+        # Info de debug exposées dans le JSON pour diagnostiquer les feuilles vides
+        classes_noms   = [p['nom'] for p in pcs if p.get('nom')]
+        jours_trouves  = sorted(list(assignment.keys()))[:5]  # 5 premiers jours
         return jsonify({
             'sessions_assignees': stats['assigned'], 'creneaux_sans_prof': stats['warn'],
             'formateurs_actifs': len(heures), 'classes': len(pcs),
             'mois': mois_str, 'nb_mois': len(mois_liste),
             'fichier': on, 'session_id': sid,
-            'heures_formateurs': {p: dict(m) for p, m in heures.items()}
+            'heures_formateurs': {p: dict(m) for p, m in heures.items()},
+            'debug_classes': classes_noms,
+            'debug_jours_assignes': jours_trouves,
+            'debug_nb_jours': len(assignment),
+            'debug_affectations': aff_debug,   # classes/formateurs/affectations détectés
         })
     except Exception as e:
         import traceback; return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500

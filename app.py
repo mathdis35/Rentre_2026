@@ -839,11 +839,14 @@ def _copier_feuille_rapide(ws_src, ws_dst):
     """
     Copie rapide pour la fusion : n'itère que les cellules réellement utilisées
     (via ws._cells) et utilise copy.copy() — valide sur Python 3.11.9 (Render).
-    3-5x plus rapide que _copier_feuille() sur des templates denses.
+    Cap à 200 lignes / 95 colonnes : couvre tous les templates mensuels (max col 91,
+    max ~160 lignes) et évite de traiter des lignes fantômes hors données.
     """
     from openpyxl.worksheet.cell_range import CellRange
-    # Cellules non vides uniquement
+    MAX_ROW, MAX_COL = 200, 95
     for (row, col), cell in ws_src._cells.items():
+        if row > MAX_ROW or col > MAX_COL:
+            continue
         nc = ws_dst.cell(row=row, column=col, value=cell.value)
         if cell.has_style:
             nc.font          = copy.copy(cell.font)

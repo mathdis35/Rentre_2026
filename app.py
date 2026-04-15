@@ -837,31 +837,48 @@ def generer_excel_multifeuilles(template_path, mois_liste, output_path):
 # ─── Fusion de fichiers Excel ─────────────────────────────────────────────────
 def _copier_feuille_rapide(ws_src, ws_dst):
     """
-    Copie rapide pour la fusion : n'itère que les cellules réellement utilisées
-    (via ws._cells) et utilise copy.copy() — valide sur Python 3.11.9 (Render).
-    Cap colonne DZ (130) : largement au-delà des templates (max col 91).
-    Pas de cap ligne : on fait confiance à _cells qui ne contient que les cellules utilisées.
+    Copie rapide pour la fusion — sans copy.copy() (instable selon version openpyxl).
+    Stratégie par priorité décroissante :
+      - cellule avec valeur  → styles complets (font + fill + alignment + number_format)
+      - cellule vide colorée → fill seul (préserve le code couleur des jours de cours)
+      - cellule vide non colorée → ignorée (bordures seules, sans intérêt pour la fusion)
     """
     from openpyxl.worksheet.cell_range import CellRange
-    MAX_COL = 130  # colonne DZ — largement au-delà des templates (max col 91)
+    from openpyxl.styles import Font, PatternFill, Alignment
+    MAX_COL = 130  # colonne DZ
+    NO_FILL = {'none', None, ''}
+
     for (row, col), cell in ws_src._cells.items():
         if col > MAX_COL:
             continue
+        has_value = cell.value is not None
+        fi = cell.fill if cell.has_style else None
+        has_color = fi and fi.fill_type not in NO_FILL
+
+        if not has_value and not has_color:
+            continue  # bordure seule : on saute
+
         nc = ws_dst.cell(row=row, column=col, value=cell.value)
-        if cell.has_style:
-            nc.font          = copy.copy(cell.font)
-            nc.fill          = copy.copy(cell.fill)
-            nc.border        = copy.copy(cell.border)
-            nc.alignment     = copy.copy(cell.alignment)
+
+        if has_color:
+            nc.fill = PatternFill(fill_type=fi.fill_type,
+                                  fgColor=copy.copy(fi.fgColor),
+                                  bgColor=copy.copy(fi.bgColor))
+        if has_value and cell.has_style:
+            f = cell.font
+            nc.font = Font(name=f.name, size=f.size, bold=f.bold, italic=f.italic,
+                           underline=f.underline, color=copy.copy(f.color),
+                           strike=f.strike, vertAlign=f.vertAlign)
+            a = cell.alignment
+            nc.alignment = Alignment(horizontal=a.horizontal, vertical=a.vertical,
+                                     wrap_text=a.wrap_text, indent=a.indent)
             nc.number_format = cell.number_format
-    # Largeurs de colonnes
+
     for col, cd in ws_src.column_dimensions.items():
         ws_dst.column_dimensions[col].width = cd.width
-    # Hauteurs de lignes
     for r, rd in ws_src.row_dimensions.items():
         if rd.height:
             ws_dst.row_dimensions[r].height = rd.height
-    # Fusions de cellules
     seen = set()
     for mg in ws_src.merged_cells.ranges:
         k = str(mg)

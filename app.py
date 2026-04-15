@@ -834,6 +834,42 @@ def generer_excel_multifeuilles(template_path, mois_liste, output_path):
     wb_out.save(output_path)
     return total_jours
 
+# ─── Fusion de fichiers Excel ─────────────────────────────────────────────────
+def fusionner_excels(sources, noms_feuilles=None):
+    """
+    Fusionne plusieurs fichiers Excel (une feuille chacun) en un seul fichier multi-feuilles.
+    sources       : list[bytes | str | Path]
+    noms_feuilles : list[str] optionnel — noms des onglets dans le fichier final
+    Retourne bytes.
+    """
+    from io import BytesIO
+    wb_dest = Workbook()
+    wb_dest.remove(wb_dest.active)
+    used_names = []
+
+    for i, source in enumerate(sources):
+        if isinstance(source, (bytes, bytearray)):
+            wb_src = load_workbook(BytesIO(source))
+        else:
+            wb_src = load_workbook(source)
+
+        ws_src = wb_src.active
+        raw = (noms_feuilles[i].strip()
+               if noms_feuilles and i < len(noms_feuilles) and noms_feuilles[i].strip()
+               else ws_src.title)
+        nom = raw[:31]  # limite Excel
+        if nom in used_names:
+            nom = f"{nom[:27]}_{i+1}"
+        used_names.append(nom)
+
+        ws_dst = wb_dest.create_sheet(title=nom)
+        _copier_feuille(ws_src, ws_dst)
+        wb_src.close()
+
+    out = BytesIO()
+    wb_dest.save(out)
+    return out.getvalue()
+
 # ─── Routes ───────────────────────────────────────────────────────────────────
 @app.route('/generer', methods=['POST'])
 def generer():
@@ -1201,6 +1237,30 @@ def generer_template_vierge_route():
                 'format':     'zip',
             })
 
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
+
+@app.route('/fusionner', methods=['POST'])
+def fusionner_route():
+    sid = str(uuid.uuid4())[:8]
+    wd  = os.path.join(UPLOAD_FOLDER, sid)
+    os.makedirs(wd, exist_ok=True)
+    try:
+        fichiers = [f for f in request.files.getlist('fichiers') if f.filename]
+        if len(fichiers) < 2:
+            return jsonify({'error': 'Au moins 2 fichiers requis'}), 400
+        try:
+            noms_feuilles = json.loads(request.form.get('noms_json', '[]'))
+        except Exception:
+            noms_feuilles = []
+        sources = [f.read() for f in fichiers]
+        result  = fusionner_excels(sources, noms_feuilles or None)
+        on = 'Fusion.xlsx'
+        op = os.path.join(wd, on)
+        with open(op, 'wb') as out:
+            out.write(result)
+        return jsonify({'fichier': on, 'session_id': sid, 'nb_feuilles': len(sources)})
     except Exception as e:
         import traceback
         return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500

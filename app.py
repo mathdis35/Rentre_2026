@@ -748,17 +748,38 @@ def generer_template_mois(template_path, output_path, annee, mois):
 def _copier_feuille(ws_src, ws_dst):
     """
     Copie complète d'une feuille vers une autre (workbooks différents).
-    Utilise copy.copy() pour les styles → pas de problème d'indices croisés.
+    Recrée les styles via leurs constructeurs pour éviter copy.copy() cassé sur Python 3.14+.
     """
+    from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
     for row in ws_src.iter_rows():
         for cell in row:
             nc = ws_dst.cell(row=cell.row, column=cell.column)
             nc.value = cell.value
             if cell.has_style:
-                nc.font          = copy.copy(cell.font)
-                nc.fill          = copy.copy(cell.fill)
-                nc.border        = copy.copy(cell.border)
-                nc.alignment     = copy.copy(cell.alignment)
+                f = cell.font
+                nc.font = Font(
+                    name=f.name, size=f.size, bold=f.bold, italic=f.italic,
+                    underline=f.underline, color=copy.copy(f.color),
+                    strike=f.strike, vertAlign=f.vertAlign
+                )
+                fi = cell.fill
+                nc.fill = PatternFill(
+                    fill_type=fi.fill_type,
+                    fgColor=copy.copy(fi.fgColor),
+                    bgColor=copy.copy(fi.bgColor)
+                )
+                b = cell.border
+                def _side(s):
+                    return Side(border_style=s.border_style, color=copy.copy(s.color))
+                nc.border = Border(
+                    left=_side(b.left), right=_side(b.right),
+                    top=_side(b.top), bottom=_side(b.bottom)
+                )
+                a = cell.alignment
+                nc.alignment = Alignment(
+                    horizontal=a.horizontal, vertical=a.vertical,
+                    wrap_text=a.wrap_text, indent=a.indent
+                )
                 nc.number_format = cell.number_format
     for col, cd in ws_src.column_dimensions.items():
         ws_dst.column_dimensions[col].width = cd.width

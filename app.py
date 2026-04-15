@@ -1,7 +1,8 @@
 import os, re, shutil, datetime, uuid, json, copy, calendar
 from pathlib import Path
 from collections import defaultdict
-from flask import Flask, render_template, request, jsonify, send_file, after_this_request
+from flask import Flask, request, jsonify, send_file, after_this_request
+from flask_cors import CORS
 
 try:
     from openpyxl import load_workbook, Workbook
@@ -12,6 +13,7 @@ except ImportError:
     pass
 
 app = Flask(__name__)
+CORS(app)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 UPLOAD_FOLDER = '/tmp/plannipro'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -805,10 +807,6 @@ def generer_excel_multifeuilles(template_path, mois_liste, output_path):
     return total_jours
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
-@app.route('/')
-def index():
-    return render_template('index.html')
-
 @app.route('/generer', methods=['POST'])
 def generer():
     sid = str(uuid.uuid4())[:8]; wd = os.path.join(UPLOAD_FOLDER, sid); os.makedirs(wd, exist_ok=True)

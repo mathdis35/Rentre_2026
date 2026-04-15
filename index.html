@@ -865,12 +865,17 @@ function hideProgress(p) {
 
 // Animation de progression pendant l'appel synchrone (estimation)
 function startFakeProgress(p, nbMois, withFusion) {
-  const estimMs = nbMois * 9000 + (withFusion ? 6000 : 0);
+  const estimMs = nbMois * 20000 + (withFusion ? 10000 : 0);
   const t0 = Date.now();
   return setInterval(() => {
-    const ratio = Math.min(0.9, (Date.now() - t0) / estimMs);
-    const idx   = Math.min(nbMois - 1, Math.floor(ratio * nbMois));
-    setProgress(p, `Traitement mois ${idx + 1} / ${nbMois}…`, Math.round(ratio * 90));
+    const elapsed = Date.now() - t0;
+    const ratio   = Math.min(0.92, elapsed / estimMs);
+    const idx     = Math.min(nbMois - 1, Math.floor(ratio * nbMois));
+    const pct     = Math.round(ratio * 92);
+    const lbl     = pct >= 88
+      ? `Finalisation… (le serveur peut prendre jusqu'à 3 min)`
+      : `Traitement mois ${idx + 1} / ${nbMois}…`;
+    setProgress(p, lbl, pct);
   }, 350);
 }
 

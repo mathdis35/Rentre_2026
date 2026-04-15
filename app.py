@@ -871,6 +871,10 @@ def fusionner_excels(sources, noms_feuilles=None):
     return out.getvalue()
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
+@app.route('/ping')
+def ping():
+    return jsonify({'ok': True})
+
 @app.route('/generer', methods=['POST'])
 def generer():
     sid = str(uuid.uuid4())[:8]; wd = os.path.join(UPLOAD_FOLDER, sid); os.makedirs(wd, exist_ok=True)

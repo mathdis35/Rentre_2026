@@ -1175,6 +1175,9 @@ if (S.v.format === 'excel' && S.v.sel.size > 6)
   S.v.sel = new Set(getMoisAnnee(S.v.annee).filter(m => S.v.sel.has(m.mois)).slice(0,6).map(m => m.mois));
 buildGrid('v'); buildTimeline('v');
 refresh();
+
+// ─── Wake-up Render ───────────────────────────────────────────────────────────
+fetch(`${API_BASE}/ping`).catch(() => {});
 </script>
 </body>
 </html>

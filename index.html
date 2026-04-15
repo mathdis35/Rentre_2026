@@ -20,7 +20,8 @@
     .main { max-width: 980px; margin: 0 auto; padding: 26px 24px; }
 
     /* ── Onglets ────────────────────────────────────── */
-    .tabs-nav { display: flex; gap: 3px; background: #F4F2EE; border-radius: 99px; padding: 4px; }
+    .tabs-nav { display: flex; gap: 3px; background: #F4F2EE; border-radius: 99px; padding: 4px; overflow-x: auto; flex-shrink: 1; scrollbar-width: none; }
+    .tabs-nav::-webkit-scrollbar { display: none; }
     .tab-btn { border: none; background: none; cursor: pointer; padding: 10px 16px; font-size: 13px; font-weight: 500; border-radius: 99px; transition: all .15s; white-space: nowrap; display: flex; align-items: center; gap: 6px; color: #777; }
     .tab-btn.active { background: #1a1a1a; color: #fff; }
     .tab-btn:not(.active):hover { background: #e9e5df; color: #1a1a1a; }
@@ -143,6 +144,7 @@
     #panel-vierge     { --accent: #8B4400; --accent-bg: #FFF7F2; --accent-light: #F0CAAA; }
     #panel-colorie    { --accent: #2A5C40; --accent-bg: #F0FAF5; --accent-light: #B6DFC6; }
     #panel-formateurs { --accent: #1A4A7A; --accent-bg: #EFF4FF; --accent-light: #B8CFEE; }
+    #panel-fusion     { --accent: #5B2A8B; --accent-bg: #F7F2FF; --accent-light: #D4B8EE; }
 
     @media (max-width: 640px) {
       .g2, .g2w { grid-template-columns: 1fr; }
@@ -162,6 +164,7 @@
       <button class="tab-btn active" data-tab="vierge">📋 Template vierge</button>
       <button class="tab-btn"        data-tab="colorie">🗓 Template colorié</button>
       <button class="tab-btn"        data-tab="formateurs">⚡ Planning formateurs</button>
+      <button class="tab-btn"        data-tab="fusion">🗂️ Fusionner</button>
     </nav>
 
     <div id="tpl-badge">
@@ -226,7 +229,7 @@
             <div class="fmt-card on" data-fmt="excel" id="v-fmt-excel">
               <div class="fmt-icon">📊</div>
               <div class="fmt-lbl">Excel multi-feuilles</div>
-              <div class="fmt-desc">1 onglet par mois</div>
+                <div class="fmt-desc">1 onglet par mois · max 6</div>
             </div>
             <div class="fmt-card" data-fmt="zip" id="v-fmt-zip">
               <div class="fmt-icon">🗜️</div>
@@ -456,6 +459,41 @@
 
   </section><!-- /panel-formateurs -->
 
+
+  <!-- ══════════════════════ ONGLET 4 : Fusionner Excel ════ -->
+  <section id="panel-fusion" class="tab-panel">
+
+    <div class="info-banner" style="background:#F7F2FF;border:1px solid #D4B8EE;color:#3a1a6a">
+      <strong>Fusion Excel</strong> — Regroupez plusieurs fichiers Excel (1 feuille chacun) en un seul fichier multi-feuilles.
+      Renommez chaque onglet librement. <strong>Sans limite de fichiers.</strong>
+    </div>
+
+    <div class="card" style="padding:17px;margin-bottom:18px">
+      <div class="stitle" style="color:#5B2A8B">Fichiers à fusionner</div>
+      <div class="drop-zone" id="m-drop" style="--accent:#5B2A8B;--accent-bg:#F7F2FF">
+        <input type="file" id="m-file" accept=".xlsx" multiple style="z-index:2"/>
+        <div class="dz-icon">🗂️</div>
+        <div class="dz-label" id="m-drop-lbl">Déposez vos fichiers Excel ici</div>
+        <div class="dz-hint">.xlsx — plusieurs fichiers, sans limite</div>
+      </div>
+      <div id="m-files" style="margin-top:12px"></div>
+    </div>
+
+    <div class="cta-wrap">
+      <button class="cta-btn" id="m-btn" style="background:#5B2A8B" disabled>🗂️ Fusionner</button>
+      <div class="cta-hint" id="m-hint">Ajoutez au moins 2 fichiers Excel</div>
+    </div>
+    <div class="card prog-block" id="m-prog" style="display:none">
+      <div class="prog-header">
+        <span class="prog-lbl" id="m-prog-lbl">Initialisation…</span>
+        <span class="prog-pct" id="m-prog-pct" style="color:#5B2A8B">0%</span>
+      </div>
+      <div class="prog-bar"><div class="prog-fill" id="m-prog-fill" style="background:#5B2A8B"></div></div>
+    </div>
+    <div id="m-result"></div>
+
+  </section><!-- /panel-fusion -->
+
 </div><!-- /main -->
 
 <!-- ══════════════════════════════════════════════════ JAVASCRIPT ══ -->
@@ -473,7 +511,7 @@ const API_BASE = window.API_BASE || '';
 // ─── Données statiques ────────────────────────────────────────────────────────
 const MOIS       = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 const MOIS_COURT = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
-const ACCENTS    = { v:'#8B4400', c:'#2A5C40', f:'#1A4A7A' };
+const ACCENTS    = { v:'#8B4400', c:'#2A5C40', f:'#1A4A7A', m:'#5B2A8B' };
 
 const FERIES = new Set([
   '2025-11-01','2025-11-11','2025-12-25',
@@ -509,10 +547,11 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 // ─── État global ──────────────────────────────────────────────────────────────
 const S = {
   tplFile: null, tplName: null,                          // template partagé
-  v: { sel: new Set([9,10,11,12,1,2,3,4,5,6]), annee: 2026, format: 'excel', busy: false },
+  v: { sel: new Set([9,10,11,12,1,2]), annee: 2026, format: 'excel', busy: false },
   c: { sel: new Set([9,10,11,12,1,2,3,4,5,6]), annee: 2026, plannings: [],   busy: false },
   f: { sel: new Set([9,10,11,12,1,2,3,4,5,6]), annee: 2026, plannings: [],
        dispos: null, tableau: null,                       busy: false },
+  m: { fichiers: [], busy: false },
 };
 
 // ─── Navigation onglets ───────────────────────────────────────────────────────
@@ -603,6 +642,7 @@ function buildGrid(p) {
                      <div class="mc-year">${annee}</div>
                      <div class="mc-days">${joursOuvres(annee, mois)}j</div>`;
     div.addEventListener('click', () => {
+      if (!ps.sel.has(mois) && p === 'v' && S.v.format === 'excel' && ps.sel.size >= 6) return;
       ps.sel.has(mois) ? ps.sel.delete(mois) : ps.sel.add(mois);
       buildGrid(p); buildTimeline(p); refresh();
     });
@@ -619,6 +659,8 @@ document.querySelectorAll('[data-shortcut]').forEach(btn => {
     if (btn.dataset.shortcut === 'annee') ps.sel = new Set([9,10,11,12,1,2,3,4,5,6]);
     if (btn.dataset.shortcut === 'tout')  ps.sel = new Set(ma.map(m => m.mois));
     if (btn.dataset.shortcut === 'aucun') ps.sel = new Set();
+    if (p === 'v' && S.v.format === 'excel' && ps.sel.size > 6)
+      ps.sel = new Set(getMoisAnnee(ps.annee).filter(m => ps.sel.has(m.mois)).slice(0,6).map(m => m.mois));
     buildGrid(p); buildTimeline(p); refresh();
   });
 });
@@ -674,6 +716,11 @@ document.querySelectorAll('[data-fmt]').forEach(card => {
     document.querySelectorAll('[data-fmt]').forEach(c => c.classList.remove('on'));
     card.classList.add('on');
     S.v.format = card.dataset.fmt;
+    if (S.v.format === 'excel' && S.v.sel.size > 6) {
+      S.v.sel = new Set(getMoisAnnee(S.v.annee).filter(m => S.v.sel.has(m.mois)).slice(0,6).map(m => m.mois));
+      buildGrid('v'); buildTimeline('v');
+    }
+    refresh();
   });
 });
 
@@ -770,13 +817,17 @@ function buildChecklist() {
 // ─── Refresh global ───────────────────────────────────────────────────────────
 function refresh() {
   // Vierge
-  const vOk = !!S.tplFile && S.v.sel.size > 0;
+  const vExcelOverLimit = S.v.format === 'excel' && S.v.sel.size > 6;
+  const vOk = !!S.tplFile && S.v.sel.size > 0 && !vExcelOverLimit;
   const vBtn = document.getElementById('v-btn');
   vBtn.disabled = !vOk || S.v.busy;
   vBtn.textContent = S.v.busy ? '⏳ Génération…' : `📋 Générer ${S.v.sel.size > 0 ? S.v.sel.size + ' mois' : ''}`;
   const vHint = document.getElementById('v-hint');
   vHint.style.display = vOk ? 'none' : 'block';
-  vHint.textContent = !S.tplFile ? 'Uploadez le template de référence' : 'Sélectionnez au moins un mois';
+  vHint.textContent = !S.tplFile ? 'Uploadez le template de référence'
+    : S.v.sel.size === 0 ? 'Sélectionnez au moins un mois'
+    : vExcelOverLimit ? `Excel multi-feuilles limité à 6 mois — passez en ZIP pour plus`
+    : '';
 
   // Colorié
   const cOk = !!S.tplFile && S.c.plannings.length > 0 && S.c.sel.size > 0;
@@ -797,6 +848,7 @@ function refresh() {
   fHint.style.display = fOk ? 'none' : 'block';
 
   buildChecklist();
+  refreshFusion();
 }
 
 // ─── Progression ──────────────────────────────────────────────────────────────
@@ -1033,8 +1085,100 @@ function setupDrop(el, callback) {
   });
 }
 
+// ─── Fusion Excel ─────────────────────────────────────────────────────────────
+function addFusionFiles(files) {
+  const valides = Array.from(files).filter(f => /\.xlsx$/i.test(f.name));
+  const noms = new Set(S.m.fichiers.map(e => e.file.name));
+  valides.filter(f => !noms.has(f.name)).forEach(f => {
+    S.m.fichiers.push({ file: f, sheetName: f.name.replace(/\.xlsx?$/i,'').slice(0, 31) });
+  });
+  renderFusionList();
+  refreshFusion();
+}
+
+function renderFusionList() {
+  const list = document.getElementById('m-files');
+  const lbl  = document.getElementById('m-drop-lbl');
+  const nb   = S.m.fichiers.length;
+  lbl.textContent = nb === 0
+    ? 'Déposez vos fichiers Excel ici'
+    : `${nb} fichier${nb > 1 ? 's' : ''} chargé${nb > 1 ? 's' : ''}`;
+  if (!nb) { list.innerHTML = ''; return; }
+  list.innerHTML = `<div style="display:flex;flex-direction:column;gap:5px">
+    ${S.m.fichiers.map((e, i) => `
+      <div class="file-chip" style="background:#F7F2FF;border:1px solid #D4B8EE">
+        <span style="color:#5B2A8B;font-size:10px;font-weight:700;min-width:18px;text-align:center">${i+1}</span>
+        <span>📄</span>
+        <span class="file-chip-name">${esc(e.file.name)}</span>
+        <input type="text" value="${esc(e.sheetName)}" maxlength="31"
+          placeholder="Nom onglet"
+          style="border:1px solid #D4B8EE;border-radius:6px;padding:3px 8px;font-size:11px;color:#3a1a6a;background:#fff;width:140px;font-family:inherit;outline:none;flex-shrink:0"
+          data-idx="${i}" class="m-sheet-input"/>
+        <button class="file-chip-del" data-midx="${i}">×</button>
+      </div>`).join('')}
+  </div>`;
+  list.querySelectorAll('.m-sheet-input').forEach(inp => {
+    inp.addEventListener('input', function() {
+      S.m.fichiers[parseInt(this.dataset.idx)].sheetName = this.value;
+    });
+  });
+  list.querySelectorAll('[data-midx]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      S.m.fichiers.splice(parseInt(btn.dataset.midx), 1);
+      renderFusionList(); refreshFusion();
+    });
+  });
+}
+
+function refreshFusion() {
+  const nb  = S.m.fichiers.length;
+  const btn = document.getElementById('m-btn');
+  const hnt = document.getElementById('m-hint');
+  if (!btn) return;
+  const ok = nb >= 2 && !S.m.busy;
+  btn.disabled = !ok;
+  btn.textContent = S.m.busy ? '⏳ Fusion…' : `🗂️ Fusionner ${nb > 0 ? nb + ' fichier' + (nb > 1 ? 's' : '') : ''}`;
+  hnt.style.display = ok ? 'none' : 'block';
+  hnt.textContent = `Ajoutez au moins 2 fichiers Excel (${nb} / 2 minimum)`;
+}
+
+setupDrop(document.getElementById('m-drop'), files => addFusionFiles(files));
+document.getElementById('m-file').addEventListener('change', function() { addFusionFiles(this.files); });
+
+document.getElementById('m-btn').addEventListener('click', async () => {
+  const ps = S.m;
+  if (ps.fichiers.length < 2 || ps.busy) return;
+  ps.busy = true; refreshFusion(); clearResult('m'); setProgress('m', 'Envoi au serveur…', 5);
+  const fd = new FormData();
+  ps.fichiers.forEach(e => fd.append('fichiers', e.file, e.file.name));
+  fd.append('noms_json', JSON.stringify(ps.fichiers.map(e => e.sheetName)));
+  const timer = startFakeProgress('m', ps.fichiers.length, false);
+  try {
+    const res  = await fetch(`${API_BASE}/fusionner`, { method: 'POST', body: fd });
+    clearInterval(timer);
+    const data = await res.json();
+    if (!res.ok || data.error) throw { msg: data.error || 'Erreur serveur', trace: data.trace };
+    setProgress('m', 'Prêt !', 100);
+    await sleep(300);
+    showResult('m', {
+      fichier  : data.fichier,
+      sessionId: data.session_id,
+      tags: [`📄 ${data.nb_feuilles} feuille${data.nb_feuilles > 1 ? 's' : ''}`],
+    });
+  } catch (err) {
+    clearInterval(timer);
+    showError('m', err.msg || String(err), err.trace);
+  } finally {
+    ps.busy = false; refreshFusion(); hideProgress('m');
+  }
+});
+
 // ─── Init ──────────────────────────────────────────────────────────────────────
 ['v','c','f'].forEach(p => { buildGrid(p); buildTimeline(p); });
+// Garantir la cohérence : si format excel au démarrage, max 6 mois
+if (S.v.format === 'excel' && S.v.sel.size > 6)
+  S.v.sel = new Set(getMoisAnnee(S.v.annee).filter(m => S.v.sel.has(m.mois)).slice(0,6).map(m => m.mois));
+buildGrid('v'); buildTimeline('v');
 refresh();
 </script>
 </body>

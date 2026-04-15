@@ -13,8 +13,15 @@ except ImportError:
     pass
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    return response
 UPLOAD_FOLDER = '/tmp/plannipro'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 

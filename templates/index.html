@@ -20,7 +20,8 @@
     .main { max-width: 980px; margin: 0 auto; padding: 26px 24px; }
 
     /* ── Onglets ────────────────────────────────────── */
-    .tabs-nav { display: flex; gap: 3px; background: #F4F2EE; border-radius: 99px; padding: 4px; }
+    .tabs-nav { display: flex; gap: 3px; background: #F4F2EE; border-radius: 99px; padding: 4px; overflow-x: auto; flex-shrink: 1; scrollbar-width: none; }
+    .tabs-nav::-webkit-scrollbar { display: none; }
     .tab-btn { border: none; background: none; cursor: pointer; padding: 10px 16px; font-size: 13px; font-weight: 500; border-radius: 99px; transition: all .15s; white-space: nowrap; display: flex; align-items: center; gap: 6px; color: #777; }
     .tab-btn.active { background: #1a1a1a; color: #fff; }
     .tab-btn:not(.active):hover { background: #e9e5df; color: #1a1a1a; }
@@ -541,7 +542,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 // ─── État global ──────────────────────────────────────────────────────────────
 const S = {
   tplFile: null, tplName: null,                          // template partagé
-  v: { sel: new Set([9,10,11,12,1,2,3,4,5,6]), annee: 2026, format: 'excel', busy: false },
+  v: { sel: new Set([9,10,11,12,1,2]), annee: 2026, format: 'excel', busy: false },
   c: { sel: new Set([9,10,11,12,1,2,3,4,5,6]), annee: 2026, plannings: [],   busy: false },
   f: { sel: new Set([9,10,11,12,1,2,3,4,5,6]), annee: 2026, plannings: [],
        dispos: null, tableau: null,                       busy: false },
@@ -1169,6 +1170,10 @@ document.getElementById('m-btn').addEventListener('click', async () => {
 
 // ─── Init ──────────────────────────────────────────────────────────────────────
 ['v','c','f'].forEach(p => { buildGrid(p); buildTimeline(p); });
+// Garantir la cohérence : si format excel au démarrage, max 6 mois
+if (S.v.format === 'excel' && S.v.sel.size > 6)
+  S.v.sel = new Set(getMoisAnnee(S.v.annee).filter(m => S.v.sel.has(m.mois)).slice(0,6).map(m => m.mois));
+buildGrid('v'); buildTimeline('v');
 refresh();
 </script>
 </body>

@@ -979,7 +979,10 @@ def generer_excel_multifeuilles(template_path, mois_liste, output_path, mode='de
         ws_src = wb_tmp.active
         sheet_name = f"{MOIS_FR[mois][:4]} {annee}"
         ws_dst = wb_out.create_sheet(title=sheet_name)
-        _copier_feuille_rapide(ws_src, ws_dst)
+        if mode == 'hide':
+            _copier_feuille_rapide(ws_src, ws_dst)
+        else:
+            _copier_feuille(ws_src, ws_dst)
         wb_tmp.close()
         os.unlink(tmp_path)
 
@@ -1012,7 +1015,7 @@ def _copier_feuille_rapide(ws_src, ws_dst):
 
         nc = ws_dst.cell(row=row, column=col, value=cell.value)
 
-        if has_color:
+        if has_color or (has_value and fi):
             nc.fill = PatternFill(fill_type=fi.fill_type,
                                   fgColor=copy.copy(fi.fgColor),
                                   bgColor=copy.copy(fi.bgColor))

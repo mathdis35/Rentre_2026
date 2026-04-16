@@ -715,7 +715,7 @@ function buildGrid(p) {
                      <div class="mc-year">${annee}</div>
                      <div class="mc-days">${joursOuvres(annee, mois)}j</div>`;
     div.addEventListener('click', () => {
-      if (!ps.sel.has(mois) && p === 'v' && S.v.format === 'excel' && ps.sel.size >= 6) return;
+      if (!ps.sel.has(mois) && p === 'v' && S.v.format === 'excel' && ps.sel.size >= 12) return;
       ps.sel.has(mois) ? ps.sel.delete(mois) : ps.sel.add(mois);
       buildGrid(p); buildTimeline(p); refresh();
     });

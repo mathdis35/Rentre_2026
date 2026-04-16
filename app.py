@@ -979,7 +979,7 @@ def generer_excel_multifeuilles(template_path, mois_liste, output_path, mode='de
         ws_src = wb_tmp.active
         sheet_name = f"{MOIS_FR[mois][:4]} {annee}"
         ws_dst = wb_out.create_sheet(title=sheet_name)
-        _copier_feuille(ws_src, ws_dst)
+        _copier_feuille_rapide(ws_src, ws_dst)
         wb_tmp.close()
         os.unlink(tmp_path)
 
@@ -1029,7 +1029,7 @@ def _copier_feuille_rapide(ws_src, ws_dst):
     for col, cd in ws_src.column_dimensions.items():
         ws_dst.column_dimensions[col].width = cd.width
     for r, rd in ws_src.row_dimensions.items():
-        if rd.height:
+        if rd.height is not None:
             ws_dst.row_dimensions[r].height = rd.height
     seen = set()
     for mg in ws_src.merged_cells.ranges:

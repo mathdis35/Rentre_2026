@@ -1079,14 +1079,13 @@ document.getElementById('v-btn').addEventListener('click', async () => {
 
     // 2. Poller la progression réelle toutes les 2s
     await new Promise((resolve, reject) => {
-      const interval = setInterval(async () => {
+      const pollOnce = async () => {
         try {
           const r = await fetch(`${API_BASE}/job/${jobId}`);
+          if (r.status === 404) { reject({ msg: 'Job introuvable (serveur redémarré ?)' }); return; }
           const d = await r.json();
-          if (d.error && d.status !== 'error') { clearInterval(interval); reject({ msg: d.error }); return; }
           setProgress('v', d.message || '…', d.progress || 0);
           if (d.status === 'done') {
-            clearInterval(interval);
             const elapsed_v = stopChrono('v');
             setProgress('v', 'Prêt !', 100);
             await sleep(300);
@@ -1103,14 +1102,15 @@ document.getElementById('v-btn').addEventListener('click', async () => {
             });
             resolve();
           } else if (d.status === 'error') {
-            clearInterval(interval);
             reject({ msg: d.error || 'Erreur inconnue', trace: d.trace });
+          } else {
+            setTimeout(pollOnce, 2000);
           }
         } catch (e) {
-          clearInterval(interval);
           reject({ msg: String(e) });
         }
-      }, 2000);
+      };
+      setTimeout(pollOnce, 1000); // premier poll après 1s
     });
 
   } catch (err) {

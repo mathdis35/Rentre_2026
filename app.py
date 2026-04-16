@@ -895,80 +895,33 @@ def _copier_feuille(ws_src, ws_dst):
 def generer_excel_multifeuilles(template_path, mois_liste, output_path):
     """
     Génère un Excel multi-feuilles (1 onglet par mois).
-    Stratégie optimisée :
-      - Ouvre le template UNE SEULE FOIS
-      - Copie la feuille template dans wb_out via _copier_feuille (1 fois par mois)
-      - Écrit les jours directement sur la feuille copiée (pas de fichier temp)
+    Stratégie en 2 étapes :
+      1. Générer chaque mois individuellement via generer_template_mois()
+         (fonction existante, testée, fiable)
+      2. Fusionner les fichiers dans un seul workbook via _copier_feuille()
+         (copy.copy des styles → aucun problème d'indices croisés)
     """
-    wb_tpl = load_workbook(template_path)
-    ws_tpl = wb_tpl.active
-
-    # Pré-calculer les positions des slots dans le template (fait 1 seule fois)
-    slots_template = []
-    for r in range(1, ws_tpl.max_row + 1):
-        v = ws_tpl.cell(row=r, column=2).value
-        if isinstance(v, str) and any(j in v for j in JOURS_FR_LIST):
-            slots_template.append(r)  # label_row de chaque slot
-
-    # Pré-calculer le titre à remplacer
-    import re as _re
-    pattern_mois = r'(?:JANVIER|FÉVRIER|FEVRIER|MARS|AVRIL|MAI|JUIN|JUILLET|AOÛT|AOUT|SEPTEMBRE|OCTOBRE|NOVEMBRE|DÉCEMBRE|DECEMBRE) 20\d\d'
-    titre_cells = []  # (row, col) des cellules titre à remplacer
-    for r in range(1, 4):
-        for c in range(1, ws_tpl.max_column + 1):
-            v = ws_tpl.cell(row=r, column=c).value
-            if isinstance(v, str) and _re.search(pattern_mois, v.upper()):
-                titre_cells.append((r, c, v))
+    import tempfile
 
     wb_out = Workbook()
     wb_out.remove(wb_out.active)
     total_jours = 0
 
     for (annee, mois) in mois_liste:
+        # Étape 1 : générer le mois dans un fichier temporaire
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
+            tmp_path = tmp.name
+        nb_jours = generer_template_mois(template_path, tmp_path, annee, mois)
+        total_jours += nb_jours
+
+        # Étape 2 : copier la feuille dans wb_out
+        wb_tmp = load_workbook(tmp_path)
+        ws_src = wb_tmp.active
         sheet_name = f"{MOIS_FR[mois][:4]} {annee}"
         ws_dst = wb_out.create_sheet(title=sheet_name)
-
-        # Copier le template dans la feuille de destination
-        _copier_feuille(ws_tpl, ws_dst)
-
-        # Remplacer le titre
-        nom_mois = MOIS_FR_UPPER[mois]
-        for r, c, orig in titre_cells:
-            ws_dst.cell(row=r, column=c).value = _re.sub(
-                pattern_mois, f"{nom_mois} {annee}", orig.upper(), flags=_re.IGNORECASE)
-
-        # Calculer les jours ouvrés du mois
-        jours_ouvres = []
-        nb_jours = calendar.monthrange(annee, mois)[1]
-        for j in range(1, nb_jours + 1):
-            d = datetime.date(annee, mois, j)
-            if d.weekday() < 5:
-                jours_ouvres.append((JOURS_FR_LIST[d.weekday()], j))
-
-        # Décalage de début de semaine
-        premier = datetime.date(annee, mois, 1)
-        slot_debut = premier.weekday() if premier.weekday() < 5 else 0
-
-        # Écrire les jours / masquer les slots inutilisés
-        for i, rl in enumerate(slots_template):
-            jour_idx = i - slot_debut
-            if 0 <= jour_idx < len(jours_ouvres):
-                label, num = jours_ouvres[jour_idx]
-                for col in JOURS_COLS:
-                    ws_dst.cell(row=rl,     column=col).value = label
-                    ws_dst.cell(row=rl + 1, column=col).value = num
-                for offset in range(6):
-                    rd = ws_dst.row_dimensions[rl + offset]
-                    if rd.height is not None and rd.height < 1:
-                        rd.height = None
-            else:
-                for offset in range(6):
-                    ws_dst.row_dimensions[rl + offset].height = 0
-                for col in JOURS_COLS:
-                    ws_dst.cell(row=rl,     column=col).value = None
-                    ws_dst.cell(row=rl + 1, column=col).value = None
-
-        total_jours += len(jours_ouvres)
+        _copier_feuille(ws_src, ws_dst)
+        wb_tmp.close()
+        os.unlink(tmp_path)
 
     wb_out.save(output_path)
     return total_jours

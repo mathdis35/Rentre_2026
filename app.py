@@ -705,85 +705,89 @@ def generer_template_colorie(template_path, planning_classes, annee_debut, outpu
     wb_out.save(output_path)
     return total, len(mois_scolaire)
 
-# ─── Génération template vierge par mois ─────────────────────────────────────
-def generer_template_mois(template_path, output_path, annee, mois):
-    """
-    Génère un template d'affichage vierge pour un mois donné.
+# ─── Stratégies de génération d'un mois ──────────────────────────────────────
+#
+# Deux stratégies disponibles, sélectionnables via le paramètre `mode` :
+#   "delete" (défaut) : supprime physiquement les lignes inutiles — rendu propre,
+#                       mais lent sur les templates riches en merged cells (O(n²))
+#   "hide"            : masque les lignes inutilisées avec height=0 — instantané,
+#                       structure fixe préservée, fichier légèrement plus lourd
+#
+# Interface commune :
+#   generate_month_sheet(ws, annee, mois, mode) → int (nb jours ouvrés)
+#   generer_template_mois(template_path, output_path, annee, mois, mode) → int
+#   generer_excel_multifeuilles(template_path, mois_liste, output_path, mode) → int
 
-    Algorithme :
-    1. Calculer tous les jours Lun-Ven du mois (fériés inclus, les profs gèrent)
-    2. Trouver slot_debut = weekday du 1er du mois (ou du 1er lundi si 1er=sam/dim)
-       → supprimer les (slot_debut * 6) premières lignes de données (début de semaine vide)
-    3. Écrire les labels de jours dans les slots restants
-    4. Après le dernier jour réel, supprimer tous les slots vides restants
-
-    Le template de référence a 25 slots → suffisant pour tous les mois.
-    1 slot = 6 lignes. Séparateurs de semaine (h≈6) entre les vendredis et lundis.
-    """
-
-
-    # ── 1. Jours ouvrés du mois (Lun-Ven, fériés inclus) ─────────────────────
-    jours_ouvres = []
-    nb_jours = calendar.monthrange(annee, mois)[1]
-    for j in range(1, nb_jours + 1):
-        d = datetime.date(annee, mois, j)
-        if d.weekday() < 5:
-            jours_ouvres.append((JOURS_FR_LIST[d.weekday()], j))
-
-    if not jours_ouvres:
-        raise ValueError(f"Aucun jour ouvré pour {mois}/{annee}")
-
-    # ── 2. Calculer les slots à supprimer au début ────────────────────────────
-    # Si le 1er est un sam/dim, le mois commence dès le lundi suivant → slot_debut=0
-    premier = datetime.date(annee, mois, 1)
-    slot_debut = premier.weekday() if premier.weekday() < 5 else 0
-    # Ex : 1er = Jeudi (3) → supprimer Lun/Mar/Mer = 3 slots = 18 lignes
-    lignes_debut = slot_debut * 6
-
-    # ── 3. Copier et ouvrir le template ──────────────────────────────────────
-    shutil.copy(template_path, output_path)
-    wb = load_workbook(output_path)
-    ws = wb.active
-
-    # APRÈS — Bug #4 corrigé : remplace tout mois + année dans le titre
-    # Ne dépend plus du fait que le template contienne exactement "SEPTEMBRE 2026"
+def _ecrire_titre_mois(ws, annee, mois):
+    """Remplace le mois/année dans les cellules titre (lignes 1-3)."""
+    import re as _re
     nom_mois = MOIS_FR_UPPER[mois]
+    pattern  = (r'(?:JANVIER|FÉVRIER|FEVRIER|MARS|AVRIL|MAI|JUIN|JUILLET|'
+                r'AOÛT|AOUT|SEPTEMBRE|OCTOBRE|NOVEMBRE|DÉCEMBRE|DECEMBRE) 20\d\d')
     for r in range(1, 4):
         for col in range(1, ws.max_column + 1):
             v = ws.cell(row=r, column=col).value
             if not isinstance(v, str): continue
-            # Remplace "NOM_MOIS ANNÉE" par le nouveau mois
-            # Cherche n'importe quel nom de mois suivi d'une année 20xx
-            import re as _re
-            pattern = r'(?:JANVIER|FÉVRIER|FEVRIER|MARS|AVRIL|MAI|JUIN|JUILLET|'                       r'AOÛT|AOUT|SEPTEMBRE|OCTOBRE|NOVEMBRE|DÉCEMBRE|DECEMBRE)'                       r' 20\d\d'
             if _re.search(pattern, v.upper()):
                 ws.cell(row=r, column=col).value = _re.sub(
-                    pattern, f"{nom_mois} {annee}", v.upper(), flags=_re.IGNORECASE
-                )
+                    pattern, f"{nom_mois} {annee}", v.upper(), flags=_re.IGNORECASE)
 
-    # ── 4. Supprimer les slots vides au début ─────────────────────────────────
+def _jours_ouvres_mois(annee, mois):
+    """Retourne la liste des (label_jour, num_jour) ouvrés du mois."""
+    jours = []
+    for j in range(1, calendar.monthrange(annee, mois)[1] + 1):
+        d = datetime.date(annee, mois, j)
+        if d.weekday() < 5:
+            jours.append((JOURS_FR_LIST[d.weekday()], j))
+    return jours
+
+def _slot_debut(annee, mois):
+    """Nombre de slots à sauter en début de mois (0 = lundi, 4 = vendredi)."""
+    premier = datetime.date(annee, mois, 1)
+    return premier.weekday() if premier.weekday() < 5 else 0
+
+def _detecter_slots(ws):
+    """Détecte les lignes label de chaque slot jour dans la feuille."""
+    slots = []
+    for r in range(1, ws.max_row + 1):
+        v = ws.cell(row=r, column=2).value
+        if isinstance(v, str) and any(j in v for j in JOURS_FR_LIST):
+            slots.append(r)
+    return slots
+
+
+def generate_month_sheet_delete(ws, annee, mois):
+    """
+    Stratégie DELETE : supprime physiquement les lignes de slots inutilisés.
+    Rendu Excel propre (pas de lignes cachées).
+    Coût : delete_rows openpyxl est O(n²) sur les merged cells → lent sur gros templates.
+    """
+    import re as _re
+    from openpyxl.worksheet.cell_range import CellRange
+
+    jours_ouvres = _jours_ouvres_mois(annee, mois)
+    if not jours_ouvres:
+        raise ValueError(f"Aucun jour ouvré pour {mois}/{annee}")
+    slot_deb  = _slot_debut(annee, mois)
+    lignes_debut = slot_deb * 6
+
+    _ecrire_titre_mois(ws, annee, mois)
+
+    # ── Supprimer les slots vides au DÉBUT ────────────────────────────────────
     if lignes_debut > 0:
         DELETE_START = 7
         DELETE_COUNT = lignes_debut
         FIRST_KEPT   = DELETE_START + DELETE_COUNT
-
-        # Sauvegarder les hauteurs AVANT suppression (bug openpyxl)
-        saved_heights = {
-            r: ws.row_dimensions[r].height
-            for r in range(FIRST_KEPT, ws.max_row + 1)
-        }
+        saved_heights = {r: ws.row_dimensions[r].height
+                         for r in range(FIRST_KEPT, ws.max_row + 1)}
         ws.delete_rows(DELETE_START, DELETE_COUNT)
-
-        # Ré-appliquer les hauteurs décalées
         for old_r, h in saved_heights.items():
             new_r = old_r - DELETE_COUNT
             if new_r >= DELETE_START and h is not None:
                 ws.row_dimensions[new_r].height = h
-
-        # Fix fusions optimisé (8x plus rapide : manipulation directe du set)
-        from openpyxl.worksheet.cell_range import CellRange
         target_rows = {r for r in range(DELETE_START, ws.max_row + 1)
-                       if (ws.row_dimensions[r].height is None or ws.row_dimensions[r].height >= 10)}
+                       if (ws.row_dimensions[r].height is None
+                           or ws.row_dimensions[r].height >= 10)}
         for mg in list(ws.merged_cells.ranges):
             if mg.min_row == mg.max_row and mg.min_row in target_rows:
                 try: ws.merged_cells.ranges.discard(mg)
@@ -793,14 +797,13 @@ def generer_template_mois(template_path, output_path, annee, mois):
                 ws.merged_cells.ranges.add(
                     CellRange(f"{get_column_letter(c1)}{r}:{get_column_letter(c2)}{r}"))
 
-    # ── 5. Détecter les slots disponibles après suppression ───────────────────
+    # ── Écrire les labels dans les slots restants ─────────────────────────────
     jours_pos = []
     for r in range(1, ws.max_row + 1):
         v = ws.cell(row=r, column=2).value
         if isinstance(v, str) and any(j in v for j in JOURS_FR_LIST):
-            jours_pos.append((r, r + 1))  # (label_row, num_row)
+            jours_pos.append((r, r + 1))
 
-    # ── 6. Écrire les labels de jours dans les slots ──────────────────────────
     for i, (rl, rn) in enumerate(jours_pos):
         if i < len(jours_ouvres):
             label, num = jours_ouvres[i]
@@ -808,32 +811,94 @@ def generer_template_mois(template_path, output_path, annee, mois):
                 ws.cell(row=rl, column=col).value = label
                 ws.cell(row=rn, column=col).value = num
         else:
-            # Slot excédentaire : effacer le label (sera supprimé ensuite)
             for col in JOURS_COLS:
                 ws.cell(row=rl, column=col).value = None
                 ws.cell(row=rn, column=col).value = None
 
-    # ── 7. Supprimer les slots vides à la FIN ─────────────────────────────────
-    # Chercher la ligne grise de fermeture (bg=FFC0C0C0) pour la préserver
+    # ── Supprimer les slots vides à la FIN ────────────────────────────────────
     grey_closing_row = None
     for r in range(ws.max_row, 0, -1):
         fill = ws.cell(row=r, column=2).fill
         bg = fill.fgColor.rgb if fill and fill.fgColor and fill.fgColor.type == 'rgb' else None
         if bg == 'FFC0C0C0':
-            grey_closing_row = r
-            break
+            grey_closing_row = r; break
 
     if len(jours_pos) > len(jours_ouvres):
         last_label_row = jours_pos[len(jours_ouvres) - 1][0]
-        last_bloc_end  = last_label_row + 4
-        delete_from    = last_bloc_end + 1
-        # S'arrêter juste avant la ligne grise de fermeture
+        delete_from    = last_label_row + 5
         delete_until   = (grey_closing_row - 1) if grey_closing_row else ws.max_row
         if delete_from <= delete_until:
             ws.delete_rows(delete_from, delete_until - delete_from + 1)
 
-    wb.save(output_path)
     return len(jours_ouvres)
+
+
+def generate_month_sheet_hide(ws, annee, mois):
+    """
+    Stratégie HIDE : masque les lignes de slots inutilisés avec height=0.
+    Aucun delete_rows → rapide même sur les templates riches en merged cells.
+    Les lignes masquées sont invisibles dans Excel mais présentes dans le fichier.
+    """
+    jours_ouvres = _jours_ouvres_mois(annee, mois)
+    if not jours_ouvres:
+        raise ValueError(f"Aucun jour ouvré pour {mois}/{annee}")
+    slot_deb = _slot_debut(annee, mois)
+
+    _ecrire_titre_mois(ws, annee, mois)
+
+    slots = _detecter_slots(ws)
+
+    for i, rl in enumerate(slots):
+        jour_idx = i - slot_deb
+        if 0 <= jour_idx < len(jours_ouvres):
+            label, num = jours_ouvres[jour_idx]
+            for col in JOURS_COLS:
+                ws.cell(row=rl,     column=col).value = label
+                ws.cell(row=rl + 1, column=col).value = num
+            # S'assurer que le slot est visible (reset height=0 éventuel)
+            for offset in range(6):
+                rd = ws.row_dimensions[rl + offset]
+                if rd.height is not None and rd.height < 1:
+                    rd.height = None
+        else:
+            # Slot inutilisé : masquer + effacer les valeurs
+            for offset in range(6):
+                ws.row_dimensions[rl + offset].height = 0
+            for col in JOURS_COLS:
+                ws.cell(row=rl,     column=col).value = None
+                ws.cell(row=rl + 1, column=col).value = None
+
+    return len(jours_ouvres)
+
+
+# Dispatcher : sélectionne la stratégie selon `mode`
+_STRATEGIES = {
+    'delete': generate_month_sheet_delete,
+    'hide':   generate_month_sheet_hide,
+}
+
+def generate_month_sheet(ws, annee, mois, mode='delete'):
+    """
+    Point d'entrée unique pour la génération d'un mois sur une feuille openpyxl.
+    mode : 'delete' (défaut) ou 'hide'
+    """
+    strategy = _STRATEGIES.get(mode, generate_month_sheet_delete)
+    return strategy(ws, annee, mois)
+
+
+# ─── Génération template vierge par mois ─────────────────────────────────────
+def generer_template_mois(template_path, output_path, annee, mois, mode='delete'):
+    """
+    Génère un template vierge pour un mois donné dans output_path.
+    Délègue la logique de remplissage à generate_month_sheet(mode).
+    mode : 'delete' (défaut) ou 'hide'
+    """
+    shutil.copy(template_path, output_path)
+    wb = load_workbook(output_path)
+    ws = wb.active
+    nb = generate_month_sheet(ws, annee, mois, mode=mode)
+    wb.save(output_path)
+    return nb
 
 
 # ─── Excel multi-feuilles (une feuille par mois) ─────────────────────────────
@@ -892,14 +957,11 @@ def _copier_feuille(ws_src, ws_dst):
                 pass
 
 
-def generer_excel_multifeuilles(template_path, mois_liste, output_path):
+def generer_excel_multifeuilles(template_path, mois_liste, output_path, mode='delete'):
     """
     Génère un Excel multi-feuilles (1 onglet par mois).
-    Stratégie en 2 étapes :
-      1. Générer chaque mois individuellement via generer_template_mois()
-         (fonction existante, testée, fiable)
-      2. Fusionner les fichiers dans un seul workbook via _copier_feuille()
-         (copy.copy des styles → aucun problème d'indices croisés)
+    mode : 'delete' (défaut) ou 'hide'
+    Stratégie : génère chaque mois dans un fichier temporaire puis fusionne.
     """
     import tempfile
 
@@ -908,13 +970,11 @@ def generer_excel_multifeuilles(template_path, mois_liste, output_path):
     total_jours = 0
 
     for (annee, mois) in mois_liste:
-        # Étape 1 : générer le mois dans un fichier temporaire
         with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
             tmp_path = tmp.name
-        nb_jours = generer_template_mois(template_path, tmp_path, annee, mois)
+        nb_jours = generer_template_mois(template_path, tmp_path, annee, mois, mode=mode)
         total_jours += nb_jours
 
-        # Étape 2 : copier la feuille dans wb_out
         wb_tmp = load_workbook(tmp_path)
         ws_src = wb_tmp.active
         sheet_name = f"{MOIS_FR[mois][:4]} {annee}"
@@ -1343,12 +1403,15 @@ def generer_template_vierge_route():
         a_fin, m_fin = mois_liste[-1]
         label = f"{MOIS_FR_UPPER[m_deb]} {a_deb}" if len(mois_liste)==1 else f"{MOIS_FR_UPPER[m_deb]} {a_deb} → {MOIS_FR_UPPER[m_fin]} {a_fin}"
         format_sortie = request.form.get('format', 'zip')
+        generation_mode = request.form.get('generation_mode', 'delete')
+        if generation_mode not in ('delete', 'hide'):
+            generation_mode = 'delete'
 
         if format_sortie == 'excel' and len(mois_liste) > 1:
             # Excel multi-feuilles — generer_excel_multifeuilles génère ET fusionne
             excel_name = f"Templates_{MOIS_FR_UPPER[m_deb]}_{a_deb}_au_{MOIS_FR_UPPER[m_fin]}_{a_fin}.xlsx"
             excel_path = os.path.join(wd, excel_name)
-            total_jours = generer_excel_multifeuilles(tp, mois_liste, excel_path)
+            total_jours = generer_excel_multifeuilles(tp, mois_liste, excel_path, mode=generation_mode)
             return jsonify({
                 'fichier':    excel_name,
                 'session_id': sid,
@@ -1381,7 +1444,7 @@ def generer_template_vierge_route():
                 nom_mois = MOIS_FR_UPPER[mois]
                 on = f"{nom_mois}_{annee}.xlsx"
                 op = os.path.join(wd, on)
-                nb = generer_template_mois(tp, op, annee, mois)
+                nb = generer_template_mois(tp, op, annee, mois, mode=generation_mode)
                 fichiers_generes.append(on)
                 total_jours += nb
             zip_name = f"Templates_{MOIS_FR_UPPER[m_deb]}_{a_deb}_au_{MOIS_FR_UPPER[m_fin]}_{a_fin}.zip"

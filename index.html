@@ -237,6 +237,20 @@
               <div class="fmt-desc">1 fichier par mois</div>
             </div>
           </div>
+
+          <div class="stitle" style="color:#8B4400;margin-top:14px">Mode de génération</div>
+          <div class="fmt-cards" style="--accent:#8B4400;--accent-bg:#FFF7F2" id="v-mode-cards">
+            <div class="fmt-card on" data-mode="delete" id="v-mode-delete">
+              <div class="fmt-icon">✂️</div>
+              <div class="fmt-lbl">Suppression</div>
+              <div class="fmt-desc">Lignes inutiles supprimées — fichier propre</div>
+            </div>
+            <div class="fmt-card" data-mode="hide" id="v-mode-hide">
+              <div class="fmt-icon">👁️</div>
+              <div class="fmt-lbl">Masquage</div>
+              <div class="fmt-desc">Lignes masquées (height=0) — plus rapide</div>
+            </div>
+          </div>
         </div>
         <div class="card" style="padding:17px;flex:1">
           <div class="stitle" style="color:#8B4400">Aperçu sélection</div>
@@ -560,7 +574,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 // ─── État global ──────────────────────────────────────────────────────────────
 const S = {
   tplFile: null, tplName: null,                          // template partagé (vierge + formateurs)
-  v: { sel: new Set([9,10,11,12,1,2]), annee: 2026, format: 'excel', busy: false },
+  v: { sel: new Set([9,10,11,12,1,2]), annee: 2026, format: 'excel', mode: 'delete', busy: false },
   c: { sel: new Set([9,10,11,12,1,2,3,4,5,6]), annee: 2026, plannings: [],
        tplFile: null, tplName: null, isMulti: false,     busy: false },  // template propre à colorié
   f: { sel: new Set([9,10,11,12,1,2,3,4,5,6]), annee: 2026, plannings: [],
@@ -782,6 +796,16 @@ function buildTimeline(p) {
   style.textContent = `#${p}-timeline .tl-item + .tl-item::before { background: ${acc}; }`;
   wrap.appendChild(style);
 }
+
+// ─── Mode de génération (vierge) ──────────────────────────────────────────────
+document.querySelectorAll('[data-mode]').forEach(card => {
+  card.addEventListener('click', () => {
+    document.querySelectorAll('[data-mode]').forEach(c => c.classList.remove('on'));
+    card.classList.add('on');
+    S.v.mode = card.dataset.mode;
+    refresh();
+  });
+});
 
 // ─── Format de sortie (vierge) ────────────────────────────────────────────────
 document.querySelectorAll('[data-fmt]').forEach(card => {
@@ -1042,7 +1066,8 @@ document.getElementById('v-btn').addEventListener('click', async () => {
   fd.append('mois_debut',  sel[0].mois);
   fd.append('annee_fin',   sel[sel.length-1].annee);
   fd.append('mois_fin',    sel[sel.length-1].mois);
-  fd.append('format',      ps.format);
+  fd.append('format',           ps.format);
+  fd.append('generation_mode', ps.mode);
   // Liste exacte des mois sélectionnés (gère les sélections discontinues)
   fd.append('mois_json', JSON.stringify(sel.map(m => [m.annee, m.mois])));
 
@@ -1063,6 +1088,7 @@ document.getElementById('v-btn').addEventListener('click', async () => {
         `📅 ${data.nb_mois} mois`,
         `📆 ${data.nb_jours} jours ouvrés`,
         data.format === 'excel' ? '📊 Excel multi-feuilles' : '🗜️ ZIP',
+        ps.mode === 'hide' ? '👁️ Mode masquage' : '✂️ Mode suppression',
         `⏱ ${elapsed_v.toFixed(1)}s`,
       ],
     });

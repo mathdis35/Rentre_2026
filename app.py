@@ -1455,136 +1455,38 @@ def _appliquer_mois_sur_feuille(ws, annee, mois, grey_row_override=None):
 
     return len(jours_ouvres)
 
-
-# ─── Système de jobs asynchrones ─────────────────────────────────────────────
-import threading
-
-JOBS = {}          # job_id → dict état
-JOBS_LOCK = threading.Lock()
-
-def _job_set(job_id, **kw):
-    with JOBS_LOCK:
-        JOBS[job_id].update(kw)
-
-def _run_generer_template_vierge(job_id, tp, mois_liste, wd, format_sortie, generation_mode):
-    """Thread de génération — met à jour JOBS[job_id] au fil de l'avancement."""
-    import zipfile as _zipfile
-    try:
-        nb_mois    = len(mois_liste)
-        total_jours = 0
-        a_deb, m_deb = mois_liste[0]
-        a_fin, m_fin = mois_liste[-1]
-        label = (f"{MOIS_FR_UPPER[m_deb]} {a_deb}"
-                 if nb_mois == 1
-                 else f"{MOIS_FR_UPPER[m_deb]} {a_deb} → {MOIS_FR_UPPER[m_fin]} {a_fin}")
-
-        if format_sortie == 'excel' and nb_mois > 1:
-            # Multi-feuilles : boucle mois par mois avec progression réelle
-            import tempfile as _tf
-            wb_out = Workbook()
-            wb_out.remove(wb_out.active)
-
-            for i, (annee, mois) in enumerate(mois_liste):
-                _job_set(job_id,
-                         message=f"Mois {i+1}/{nb_mois} — {MOIS_FR[mois]} {annee}…",
-                         progress=round(i / nb_mois * 88))
-
-                with _tf.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
-                    tmp_path = tmp.name
-                nb_j = generer_template_mois(tp, tmp_path, annee, mois, mode=generation_mode)
-                total_jours += nb_j
-
-                wb_tmp = load_workbook(tmp_path)
-                ws_src = wb_tmp.active
-                sheet_name = f"{MOIS_FR[mois][:4]} {annee}"
-                ws_dst = wb_out.create_sheet(title=sheet_name)
-                if generation_mode == 'hide':
-                    _copier_feuille_rapide(ws_src, ws_dst)
-                else:
-                    _copier_feuille(ws_src, ws_dst)
-                wb_tmp.close()
-                os.unlink(tmp_path)
-
-            _job_set(job_id, message="Sauvegarde du fichier…", progress=92)
-            excel_name = f"Templates_{MOIS_FR_UPPER[m_deb]}_{a_deb}_au_{MOIS_FR_UPPER[m_fin]}_{a_fin}.xlsx"
-            excel_path = os.path.join(wd, excel_name)
-            wb_out.save(excel_path)
-
-            _job_set(job_id,
-                     status='done', progress=100, message='Prêt !',
-                     fichier=excel_name, session_id=os.path.basename(wd),
-                     nb_jours=total_jours, nb_mois=nb_mois,
-                     format='excel', mois=label)
-
-        elif nb_mois == 1:
-            annee, mois = mois_liste[0]
-            _job_set(job_id, message=f"Génération {MOIS_FR[mois]} {annee}…", progress=10)
-            nom_mois = MOIS_FR_UPPER[mois]
-            on = f"{nom_mois}_{annee}.xlsx"
-            op = os.path.join(wd, on)
-            nb_j = generer_template_mois(tp, op, annee, mois, mode=generation_mode)
-            _job_set(job_id,
-                     status='done', progress=100, message='Prêt !',
-                     fichier=on, session_id=os.path.basename(wd),
-                     nb_jours=nb_j, nb_mois=1, format='xlsx', mois=label)
-
-        else:
-            # ZIP
-            fichiers_generes = []
-            for i, (annee, mois) in enumerate(mois_liste):
-                _job_set(job_id,
-                         message=f"Mois {i+1}/{nb_mois} — {MOIS_FR[mois]} {annee}…",
-                         progress=round(i / nb_mois * 88))
-                nom_mois = MOIS_FR_UPPER[mois]
-                on = f"{nom_mois}_{annee}.xlsx"
-                op = os.path.join(wd, on)
-                nb_j = generer_template_mois(tp, op, annee, mois, mode=generation_mode)
-                fichiers_generes.append(on)
-                total_jours += nb_j
-
-            _job_set(job_id, message="Compression ZIP…", progress=92)
-            zip_name = f"Templates_{MOIS_FR_UPPER[m_deb]}_{a_deb}_au_{MOIS_FR_UPPER[m_fin]}_{a_fin}.zip"
-            zip_path = os.path.join(wd, zip_name)
-            with _zipfile.ZipFile(zip_path, 'w', _zipfile.ZIP_DEFLATED) as zf:
-                for fn in fichiers_generes:
-                    zf.write(os.path.join(wd, fn), fn)
-            _job_set(job_id,
-                     status='done', progress=100, message='Prêt !',
-                     fichier=zip_name, session_id=os.path.basename(wd),
-                     nb_jours=total_jours, nb_mois=nb_mois, format='zip', mois=label)
-
-    except Exception as e:
-        import traceback
-        _job_set(job_id, status='error',
-                 error=str(e), trace=traceback.format_exc(), progress=0)
-
-
-@app.route('/job/<job_id>')
-def job_status(job_id):
-    with JOBS_LOCK:
-        job = JOBS.get(job_id)
-    if not job:
-        return jsonify({'error': 'Job introuvable'}), 404
-    return jsonify(job)
-
-
 @app.route('/generer-template-vierge', methods=['POST'])
 def generer_template_vierge_route():
     """
-    Démarre la génération en arrière-plan et répond immédiatement avec un job_id.
-    Le client poll GET /job/<job_id> pour suivre la progression réelle.
+    Génère un ou plusieurs templates vierges (jusqu'à 12 mois) dans un ZIP.
+    Paramètres POST :
+      - template    : fichier .xlsx de référence
+      - annee_debut : année de début
+      - mois_debut  : mois de début (1-12)
+      - annee_fin   : année de fin
+      - mois_fin    : mois de fin (1-12)
     """
+    import zipfile
+
     try:
         sid = str(uuid.uuid4())[:8]
         wd  = os.path.join(UPLOAD_FOLDER, sid)
         os.makedirs(wd, exist_ok=True)
 
+        def save(f):
+            p = os.path.join(wd, os.path.basename(f.filename) if f.filename else 'template.xlsx')
+            f.save(p)
+            return p
         tf = request.files.get('template')
         if not tf:
             return jsonify({'error': 'Template manquant'}), 400
-        tp = os.path.join(wd, 'template.xlsx')
-        tf.save(tp)
 
+        tp = save(tf)
+
+        # APRÈS — Bug #3 corrigé : mois_json = liste exacte des mois sélectionnés
+        # Priorité 1 : mois_json [[annee, mois], ...] (nouveau front)
+        # Priorité 2 : mois_liste JSON (compatibilité)
+        # Fallback    : plage annee_debut/mois_debut → annee_fin/mois_fin
         mois_json = request.form.get('mois_json')
         mois_liste_json = request.form.get('mois_liste')
         if mois_json:
@@ -1603,33 +1505,75 @@ def generer_template_vierge_route():
             while (a, m) <= (annee_fin, mois_fin):
                 mois_liste.append((a, m))
                 m += 1
-                if m > 12: m = 1; a += 1
-                if len(mois_liste) > 12: break
+                if m > 12:
+                    m = 1; a += 1
+                if len(mois_liste) > 12:
+                    break
 
         if not mois_liste:
             return jsonify({'error': 'Plage de mois invalide'}), 400
 
-        format_sortie   = request.form.get('format', 'zip')
+        a_deb, m_deb = mois_liste[0]
+        a_fin, m_fin = mois_liste[-1]
+        label = f"{MOIS_FR_UPPER[m_deb]} {a_deb}" if len(mois_liste)==1 else f"{MOIS_FR_UPPER[m_deb]} {a_deb} → {MOIS_FR_UPPER[m_fin]} {a_fin}"
+        format_sortie = request.form.get('format', 'zip')
         generation_mode = request.form.get('generation_mode', 'delete')
         if generation_mode not in ('delete', 'hide'):
             generation_mode = 'delete'
 
-        job_id = str(uuid.uuid4())[:12]
-        with JOBS_LOCK:
-            JOBS[job_id] = {
-                'status': 'running', 'progress': 0,
-                'message': 'Démarrage…', 'fichier': None,
-                'session_id': sid, 'error': None, 'trace': None,
-            }
+        if format_sortie == 'excel' and len(mois_liste) > 1:
+            # Excel multi-feuilles — generer_excel_multifeuilles génère ET fusionne
+            excel_name = f"Templates_{MOIS_FR_UPPER[m_deb]}_{a_deb}_au_{MOIS_FR_UPPER[m_fin]}_{a_fin}.xlsx"
+            excel_path = os.path.join(wd, excel_name)
+            total_jours = generer_excel_multifeuilles(tp, mois_liste, excel_path, mode=generation_mode)
+            return jsonify({
+                'fichier':    excel_name,
+                'session_id': sid,
+                'mois':       label,
+                'nb_jours':   total_jours,
+                'nb_mois':    len(mois_liste),
+                'format':     'excel',
+            })
 
-        t = threading.Thread(
-            target=_run_generer_template_vierge,
-            args=(job_id, tp, mois_liste, wd, format_sortie, generation_mode),
-            daemon=True,
-        )
-        t.start()
+        elif len(mois_liste) == 1:
+            # Un seul mois : générer directement
+            nom_mois = MOIS_FR_UPPER[mois_liste[0][1]]
+            on = f"{nom_mois}_{mois_liste[0][0]}.xlsx"
+            op = os.path.join(wd, on)
+            total_jours = generer_template_mois(tp, op, mois_liste[0][0], mois_liste[0][1])
+            return jsonify({
+                'fichier':    on,
+                'session_id': sid,
+                'mois':       label,
+                'nb_jours':   total_jours,
+                'nb_mois':    1,
+                'format':     'xlsx',
+            })
 
-        return jsonify({'job_id': job_id})
+        else:
+            # ZIP — générer chaque mois puis zipper
+            fichiers_generes = []
+            total_jours = 0
+            for (annee, mois) in mois_liste:
+                nom_mois = MOIS_FR_UPPER[mois]
+                on = f"{nom_mois}_{annee}.xlsx"
+                op = os.path.join(wd, on)
+                nb = generer_template_mois(tp, op, annee, mois, mode=generation_mode)
+                fichiers_generes.append(on)
+                total_jours += nb
+            zip_name = f"Templates_{MOIS_FR_UPPER[m_deb]}_{a_deb}_au_{MOIS_FR_UPPER[m_fin]}_{a_fin}.zip"
+            zip_path = os.path.join(wd, zip_name)
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for fn in fichiers_generes:
+                    zf.write(os.path.join(wd, fn), fn)
+            return jsonify({
+                'fichier':    zip_name,
+                'session_id': sid,
+                'mois':       label,
+                'nb_jours':   total_jours,
+                'nb_mois':    len(mois_liste),
+                'format':     'zip',
+            })
 
     except Exception as e:
         import traceback

@@ -1049,8 +1049,9 @@ function clearResult(p) {
 }
 
 // ─── FETCH : Template vierge ──────────────────────────────────────────────────
-// POST /generer-template-vierge → { job_id }
-// GET  /job/<job_id>            → { status, progress, message, fichier, … }
+// POST /generer-template-vierge
+// FormData : template, annee_debut, mois_debut, annee_fin, mois_fin, format
+// Réponse  : { fichier, session_id, nb_mois, nb_jours, format, mois }
 document.getElementById('v-btn').addEventListener('click', async () => {
   const ps  = S.v;
   const ma  = getMoisAnnee(ps.annee);
@@ -1060,61 +1061,40 @@ document.getElementById('v-btn').addEventListener('click', async () => {
   ps.busy = true; refresh(); clearResult('v'); setProgress('v', 'Envoi au serveur…', 2); startChrono('v');
 
   const fd = new FormData();
-  fd.append('template',        S.tplFile, S.tplName);
-  fd.append('annee_debut',     sel[0].annee);
-  fd.append('mois_debut',      sel[0].mois);
-  fd.append('annee_fin',       sel[sel.length-1].annee);
-  fd.append('mois_fin',        sel[sel.length-1].mois);
-  fd.append('format',          ps.format);
+  fd.append('template',    S.tplFile, S.tplName);
+  fd.append('annee_debut', sel[0].annee);
+  fd.append('mois_debut',  sel[0].mois);
+  fd.append('annee_fin',   sel[sel.length-1].annee);
+  fd.append('mois_fin',    sel[sel.length-1].mois);
+  fd.append('format',           ps.format);
   fd.append('generation_mode', ps.mode);
-  fd.append('mois_json',       JSON.stringify(sel.map(m => [m.annee, m.mois])));
+  // Liste exacte des mois sélectionnés (gère les sélections discontinues)
+  fd.append('mois_json', JSON.stringify(sel.map(m => [m.annee, m.mois])));
 
+  const timer = startFakeProgress('v', sel.length, ps.format === 'excel');
   try {
-    // 1. Démarrer le job (réponse immédiate)
-    const startRes = await fetch(`${API_BASE}/generer-template-vierge`, { method: 'POST', body: fd });
-    const startData = await startRes.json();
-    if (!startRes.ok || startData.error) throw { msg: startData.error || 'Erreur serveur', trace: startData.trace };
+    const res  = await fetch(`${API_BASE}/generer-template-vierge`, { method: 'POST', body: fd });
+    clearInterval(timer);
+    const data = await res.json();
+    if (!res.ok || data.error) throw { msg: data.error || 'Erreur serveur', trace: data.trace };
 
-    const jobId = startData.job_id;
-
-    // 2. Poller la progression réelle toutes les 2s
-    await new Promise((resolve, reject) => {
-      const pollOnce = async () => {
-        try {
-          const r = await fetch(`${API_BASE}/job/${jobId}`);
-          if (r.status === 404) { reject({ msg: 'Job introuvable (serveur redémarré ?)' }); return; }
-          const d = await r.json();
-          setProgress('v', d.message || '…', d.progress || 0);
-          if (d.status === 'done') {
-            const elapsed_v = stopChrono('v');
-            setProgress('v', 'Prêt !', 100);
-            await sleep(300);
-            showResult('v', {
-              fichier  : d.fichier,
-              sessionId: d.session_id,
-              tags: [
-                `📅 ${d.nb_mois} mois`,
-                `📆 ${d.nb_jours} jours ouvrés`,
-                d.format === 'excel' ? '📊 Excel multi-feuilles' : '🗜️ ZIP',
-                ps.mode === 'hide' ? '👁️ Mode masquage' : '✂️ Mode suppression',
-                `⏱ ${elapsed_v.toFixed(1)}s`,
-              ],
-            });
-            resolve();
-          } else if (d.status === 'error') {
-            reject({ msg: d.error || 'Erreur inconnue', trace: d.trace });
-          } else {
-            setTimeout(pollOnce, 2000);
-          }
-        } catch (e) {
-          reject({ msg: String(e) });
-        }
-      };
-      setTimeout(pollOnce, 1000); // premier poll après 1s
+    const elapsed_v = stopChrono('v');
+    setProgress('v', 'Prêt !', 100);
+    await sleep(300);
+    showResult('v', {
+      fichier   : data.fichier,
+      sessionId : data.session_id,
+      tags: [
+        `📅 ${data.nb_mois} mois`,
+        `📆 ${data.nb_jours} jours ouvrés`,
+        data.format === 'excel' ? '📊 Excel multi-feuilles' : '🗜️ ZIP',
+        ps.mode === 'hide' ? '👁️ Mode masquage' : '✂️ Mode suppression',
+        `⏱ ${elapsed_v.toFixed(1)}s`,
+      ],
     });
-
   } catch (err) {
     stopChrono('v');
+    clearInterval(timer);
     showError('v', err.msg || String(err), err.trace);
   } finally {
     ps.busy = false; refresh(); hideProgress('v');

@@ -527,6 +527,98 @@ def detect_structure(ws):
         break
     return {'class_cols': cc, 'class_colors': colors, 'first_data_row': fdr, 'day_label_col': dlc}
 
+def colorier_multifeuilles(multi_path, planning_classes, output_path):
+    """
+    Nouveau flux : reçoit un Excel multi-feuilles (produit par generer_excel_multifeuilles)
+    et colorie directement les cases de chaque classe jour par jour.
+
+    - Détecte le mois/année depuis le titre de chaque feuille (ex. "Septembre 2026")
+    - Détecte la structure (colonnes classes, ligne de début, colonne jour) via detect_structure
+    - Repère les lignes de données en cherchant le nom du jour + numéro dans les premières colonnes
+    - Colorie les cases des classes qui ont cours ce jour-là
+    """
+    from openpyxl.worksheet.cell_range import CellRange as _CR
+    shutil.copy(multi_path, output_path)
+    wb = load_workbook(output_path)
+
+    # Pré-indexer les jours de cours par classe : { 'YYYY-MM-DD' : set(noms_classes) }
+    jours_par_date = defaultdict(set)
+    for pc in planning_classes:
+        for ds in pc.get('jours', []):
+            jours_par_date[ds].add(pc['nom'])
+
+    jf = {'lundi':0,'mardi':1,'mercredi':2,'jeudi':3,'vendredi':4,
+          'lun':0,'mar':1,'mer':2,'jeu':3,'ven':4}
+    total = 0
+
+    for sn in wb.sheetnames:
+        ws = wb[sn]
+
+        # Détecter mois/année depuis le titre de la feuille ou cellules en-tête
+        mn, yr = None, None
+        for src in [sn] + [ws.cell(row=r, column=c).value
+                            for r in range(1, 4) for c in range(1, ws.max_column+1)
+                            if ws.cell(row=r, column=c).value]:
+            if not isinstance(src, str): continue
+            for m_key, m_num in MOIS_ABBR.items():
+                if m_key.upper() in src.upper():
+                    y = re.search(r'(20\d\d)', src)
+                    if y:
+                        mn = m_num; yr = int(y.group(1)); break
+            if mn: break
+        if not mn:
+            continue
+
+        struct = detect_structure(ws)
+        cc = struct['class_cols']; colors = struct['class_colors']
+        ci_def = 0
+        for nom in cc:
+            if nom not in colors:
+                colors[nom] = DEFAULT_COLORS[ci_def % len(DEFAULT_COLORS)]; ci_def += 1
+
+        # Repérer les lignes de données : cherche nom de jour dans col 1-4
+        row_dates = {}  # { 'YYYY-MM-DD': row_idx }
+        for ri in range(1, ws.max_row + 1):
+            for ci2 in range(1, 5):
+                v = ws.cell(row=ri, column=ci2).value
+                if not isinstance(v, str): continue
+                if v.strip().lower() not in jf: continue
+                # Cherche le numéro du jour dans les colonnes proches
+                for lci in range(1, 6):
+                    dv = ws.cell(row=ri, column=lci).value
+                    if isinstance(dv, (int, float)) and 1 <= int(dv) <= 31:
+                        try:
+                            d = datetime.date(yr, mn, int(dv))
+                            ds = d.strftime('%Y-%m-%d')
+                            if ds not in row_dates:
+                                row_dates[ds] = ri
+                        except: pass
+                        break
+                break
+
+        # Colorier
+        for ds, ri in row_dates.items():
+            classes_ce_jour = jours_par_date.get(ds, set())
+            for classe_nom, col_idx in cc.items():
+                a_cours = any(
+                    pc_nom.strip().lower() in classe_nom.lower()
+                    or classe_nom.lower() in pc_nom.strip().lower()
+                    for pc_nom in classes_ce_jour
+                )
+                cell = ws.cell(row=ri, column=col_idx)
+                if a_cours:
+                    color = colors.get(classe_nom, 'FFD9D9D9')
+                    if len(color) == 6: color = 'FF' + color
+                    cell.fill = PatternFill(start_color=color, end_color=color, fill_type='solid')
+                    total += 1
+                else:
+                    cell.fill = PatternFill(fill_type=None)
+                    cell.value = None
+
+    wb.save(output_path)
+    return total, len(wb.sheetnames)
+
+
 def generer_template_colorie(template_path, planning_classes, annee_debut, output_path, mois_cibles=None):
     wb_tpl = load_workbook(template_path)
     struct = detect_structure(wb_tpl.active)
@@ -1070,12 +1162,22 @@ def generer_template_colorie_route():
         cp = [save(f, 'classes') for f in cf if f.filename]; tp = save(tf)
         pcs = [cl for cl in [parse_planning_classe(p) for p in cp] if cl]
         on = f"Template_Affichage_{annee}_{annee+1}.xlsx"; op = os.path.join(wd, on)
-        total, nb = generer_template_colorie(tp, pcs, annee, op, mois_cibles=mois_cibles)
+
+        # Détection automatique : multi-feuilles → nouveau flux, feuille unique → ancien flux
+        wb_check = load_workbook(tp, read_only=True)
+        is_multi = len(wb_check.sheetnames) > 1
+        wb_check.close()
+
+        if is_multi:
+            total, nb = colorier_multifeuilles(tp, pcs, op)
+        else:
+            total, nb = generer_template_colorie(tp, pcs, annee, op, mois_cibles=mois_cibles)
+
         return jsonify({
             'fichier': on, 'session_id': sid, 'nb_mois': nb,
             'cases_colories': total, 'classes': len(pcs),
             'noms_classes': [cl['nom'] for cl in pcs if cl.get('nom')],
-            'format': 'excel',  # APRÈS — Bug #5 : homogénéiser le JSON
+            'format': 'excel',
         })
     except Exception as e:
         import traceback; return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500

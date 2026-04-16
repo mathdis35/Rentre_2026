@@ -229,7 +229,7 @@
             <div class="fmt-card on" data-fmt="excel" id="v-fmt-excel">
               <div class="fmt-icon">📊</div>
               <div class="fmt-lbl">Excel multi-feuilles</div>
-              <div class="fmt-desc">1 onglet par mois · max 6</div>
+                <div class="fmt-desc">1 onglet par mois · max 6</div>
             </div>
             <div class="fmt-card" data-fmt="zip" id="v-fmt-zip">
               <div class="fmt-icon">🗜️</div>
@@ -265,8 +265,9 @@
   <section id="panel-colorie" class="tab-panel">
 
     <div class="info-banner" style="background:#F0FAF5;border:1px solid #B6DFC6;color:#1e4a2e">
-      <strong>Template colorié</strong> — Uploadez les plannings des classes (.xls). Le système détecte les jours
-      de cours (cases bleues) et colorie les templates. <strong>Un onglet par mois</strong> dans le fichier final.
+      <strong>Template colorié</strong> — Deux modes :
+      <strong>Mode rapide</strong> : uploadez un Excel multi-feuilles (généré par l'onglet Template vierge) + les plannings de classes → coloriages directs, pas besoin de sélectionner les mois.
+      <strong>Mode classique</strong> : uploadez un template simple (.xlsx) + plannings + sélectionnez les mois.
     </div>
 
     <!-- Template mémorisé (colorié) -->
@@ -274,7 +275,7 @@
       <span style="font-size:16px">✅</span>
       <div class="stored-info">
         <div class="stored-name" id="c-stored-name"></div>
-        <div class="stored-sub">Template mémorisé — pas besoin de le ré-uploader</div>
+        <div class="stored-sub" id="c-stored-sub">Template mémorisé — pas besoin de le ré-uploader</div>
       </div>
       <button class="pb pb-gh" id="c-tpl-change" style="font-size:11px">Changer</button>
     </div>
@@ -282,8 +283,8 @@
       <div class="drop-zone" id="c-tpl-drop" style="--accent:#2A5C40;--accent-bg:#F0FAF5">
         <input type="file" id="c-tpl-file" accept=".xlsx" style="z-index:2"/>
         <div class="dz-icon">🎨</div>
-        <div class="dz-label">Template avec couleurs par classe</div>
-        <div class="dz-hint">Ex : DÉCEMBRE_2026.xlsx</div>
+        <div class="dz-label" id="c-tpl-label">Template (simple ou multi-feuilles)</div>
+        <div class="dz-hint" id="c-tpl-hint">Template vierge simple (.xlsx) ou multi-feuilles généré</div>
       </div>
     </div>
 
@@ -300,8 +301,8 @@
         <div class="file-list" id="c-files"></div>
       </div>
 
-      <!-- Mois + timeline -->
-      <div class="col-st">
+      <!-- Mois + timeline (masqués en mode multi-feuilles) -->
+      <div class="col-st" id="c-mois-panel">
         <div class="card" style="padding:17px">
           <div class="stitle" style="color:#2A5C40">Mois à générer</div>
           <div class="mois-toolbar">
@@ -325,7 +326,7 @@
 
     <div class="cta-wrap">
       <button class="cta-btn" id="c-btn" style="background:#2A5C40" disabled>🗓 Générer</button>
-      <div class="cta-hint" id="c-hint">Uploadez le template colorié</div>
+      <div class="cta-hint" id="c-hint">Uploadez le template</div>
     </div>
     <div class="card prog-block" id="c-prog" style="display:none">
       <div class="prog-header">
@@ -498,6 +499,11 @@
 
 <!-- ══════════════════════════════════════════════════ JAVASCRIPT ══ -->
 <script>
+  // ⚠️ Remplacer par l'URL Render après déploiement
+  // Exemple : window.API_BASE = 'https://plannipro.onrender.com';
+  window.API_BASE = 'https://rentre-2026.onrender.com';
+</script>
+<script>
 'use strict';
 
 // ─── Configuration API ────────────────────────────────────────────────────────
@@ -541,9 +547,10 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ─── État global ──────────────────────────────────────────────────────────────
 const S = {
-  tplFile: null, tplName: null,                          // template partagé
+  tplFile: null, tplName: null,                          // template partagé (vierge + formateurs)
   v: { sel: new Set([9,10,11,12,1,2]), annee: 2026, format: 'excel', busy: false },
-  c: { sel: new Set([9,10,11,12,1,2,3,4,5,6]), annee: 2026, plannings: [],   busy: false },
+  c: { sel: new Set([9,10,11,12,1,2,3,4,5,6]), annee: 2026, plannings: [],
+       tplFile: null, tplName: null, isMulti: false,     busy: false },  // template propre à colorié
   f: { sel: new Set([9,10,11,12,1,2,3,4,5,6]), annee: 2026, plannings: [],
        dispos: null, tableau: null,                       busy: false },
   m: { fichiers: [], busy: false },
@@ -584,10 +591,10 @@ function syncTemplateBadge() {
 }
 
 function syncTemplateBanners() {
+  // Onglets v et f : template partagé
   [
-    { p:'v', storedId:'v-stored', nameId:'v-stored-name', uploadId:'v-upload' },
-    { p:'c', storedId:'c-stored', nameId:'c-stored-name', uploadId:'c-upload' },
-    { p:'f', storedId:'f-stored', nameId:'f-stored-name', uploadId:'f-upload' },
+    { storedId:'v-stored', nameId:'v-stored-name', uploadId:'v-upload' },
+    { storedId:'f-stored', nameId:'f-stored-name', uploadId:'f-upload' },
   ].forEach(({ storedId, nameId, uploadId }) => {
     const stored = document.getElementById(storedId);
     const upload = document.getElementById(uploadId);
@@ -601,25 +608,85 @@ function syncTemplateBanners() {
       upload.style.display = 'block';
     }
   });
+  // Onglet c : template propre
+  syncColorieTemplate();
+}
+
+function syncColorieTemplate() {
+  const stored = document.getElementById('c-stored');
+  const upload = document.getElementById('c-upload');
+  const moisPanel = document.getElementById('c-mois-panel');
+  if (S.c.tplFile) {
+    document.getElementById('c-stored-name').textContent = S.c.tplName;
+    document.getElementById('c-stored-sub').textContent = S.c.isMulti
+      ? 'Template multi-feuilles — sélection de mois inutile'
+      : 'Template mémorisé — pas besoin de le ré-uploader';
+    stored.style.display = 'flex';
+    upload.style.display = 'none';
+    moisPanel.style.display = S.c.isMulti ? 'none' : '';
+  } else {
+    stored.style.display = 'none';
+    upload.style.display = 'block';
+    moisPanel.style.display = '';
+  }
+}
+
+function setColorieTemplate(file) {
+  // Détecte multi-feuilles via nombre de feuilles : on lit le ZIP pour compter les sheet XML
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    let isMulti = false;
+    try {
+      const bytes = new Uint8Array(e.target.result);
+      // Compte les entrées xl/worksheets/sheet*.xml dans le ZIP
+      const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, 4000));
+      // Cherche "xl/worksheets/sheet2" dans le central directory (début du ZIP)
+      // Approche simple : chercher "sheet2.xml" dans les premiers octets
+      isMulti = text.includes('sheet2.xml');
+    } catch (_) {}
+    S.c.tplFile = file;
+    S.c.tplName = file.name;
+    S.c.isMulti = isMulti;
+    syncColorieTemplate();
+    refresh();
+  };
+  reader.readAsArrayBuffer(file.slice(0, 8000));
+}
+
+function clearColorieTemplate() {
+  S.c.tplFile = null; S.c.tplName = null; S.c.isMulti = false;
+  syncColorieTemplate();
+  refresh();
 }
 
 // Boutons "Changer" + badge clear
 document.getElementById('tpl-badge-clear').addEventListener('click', clearTemplate);
-['v','c','f'].forEach(p => {
+['v','f'].forEach(p => {
   const btn = document.getElementById(`${p}-tpl-change`);
   if (btn) btn.addEventListener('click', clearTemplate);
 });
+const cTplChange = document.getElementById('c-tpl-change');
+if (cTplChange) cTplChange.addEventListener('click', clearColorieTemplate);
 
-// Inputs template (tous partagés)
-['v-tpl-file','c-tpl-file','f-tpl-file'].forEach(id => {
+// Inputs template partagé (v et f)
+['v-tpl-file','f-tpl-file'].forEach(id => {
   const el = document.getElementById(id);
   if (el) el.addEventListener('change', function() { if (this.files[0]) setTemplate(this.files[0]); });
 });
-['v-tpl-drop','c-tpl-drop','f-tpl-drop'].forEach(id => {
+['v-tpl-drop','f-tpl-drop'].forEach(id => {
   setupDrop(document.getElementById(id), files => {
     const f = Array.from(files).find(f => f.name.endsWith('.xlsx'));
     if (f) setTemplate(f);
   });
+});
+
+// Input template colorié (propre à c)
+const cTplFile = document.getElementById('c-tpl-file');
+if (cTplFile) cTplFile.addEventListener('change', function() { if (this.files[0]) setColorieTemplate(this.files[0]); });
+setupDrop(document.getElementById('c-tpl-drop'), files => {
+  const f = Array.from(files).find(f => f.name.endsWith('.xlsx'));
+  if (f) setColorieTemplate(f);
+});
 });
 
 // ─── Grilles de mois ──────────────────────────────────────────────────────────
@@ -825,13 +892,18 @@ function refresh() {
     : '';
 
   // Colorié
-  const cOk = !!S.tplFile && S.c.plannings.length > 0 && S.c.sel.size > 0;
+  const cHasMonths = S.c.isMulti || S.c.sel.size > 0;
+  const cOk = !!S.c.tplFile && S.c.plannings.length > 0 && cHasMonths;
   const cBtn = document.getElementById('c-btn');
   cBtn.disabled = !cOk || S.c.busy;
-  cBtn.textContent = S.c.busy ? '⏳ Génération…' : `🗓 Générer ${S.c.sel.size > 0 ? S.c.sel.size + ' mois' : ''}`;
+  cBtn.textContent = S.c.busy ? '⏳ Génération…'
+    : S.c.isMulti ? '🗓 Colorier (multi-feuilles)'
+    : `🗓 Générer ${S.c.sel.size > 0 ? S.c.sel.size + ' mois' : ''}`;
   const cHint = document.getElementById('c-hint');
   cHint.style.display = cOk ? 'none' : 'block';
-  cHint.textContent = !S.tplFile ? 'Uploadez le template colorié' : S.c.plannings.length === 0 ? 'Ajoutez au moins un planning de classe' : 'Sélectionnez au moins un mois';
+  cHint.textContent = !S.c.tplFile ? 'Uploadez le template'
+    : S.c.plannings.length === 0 ? 'Ajoutez au moins un planning de classe'
+    : 'Sélectionnez au moins un mois';
 
   // Formateurs
   const f   = S.f;
@@ -973,22 +1045,27 @@ document.getElementById('v-btn').addEventListener('click', async () => {
 // Réponse  : { fichier, session_id, nb_mois, cases_colories, classes }
 document.getElementById('c-btn').addEventListener('click', async () => {
   const ps  = S.c;
-  const ma  = getMoisAnnee(ps.annee);
-  const sel = ma.filter(m => ps.sel.has(m.mois));
-  if (!sel.length || !ps.plannings.length || !S.tplFile) return;
-
-  ps.busy = true; refresh(); clearResult('c'); setProgress('c', 'Envoi au serveur…', 2);
+  if (!ps.tplFile || !ps.plannings.length) return;
 
   const fd = new FormData();
-  fd.append('template',    S.tplFile, S.tplName);
+  fd.append('template', ps.tplFile, ps.tplName);
   ps.plannings.forEach((f, i) => fd.append(`planning_${i}`, f, f.name));
-  fd.append('annee_debut', sel[0].annee);
-  fd.append('mois_debut',  sel[0].mois);
-  fd.append('annee_fin',   sel[sel.length-1].annee);
-  fd.append('mois_fin',    sel[sel.length-1].mois);
-  fd.append('mois_json', JSON.stringify(sel.map(m => [m.annee, m.mois])));
 
-  const timer = startFakeProgress('c', sel.length, true);
+  let nbMoisEstim = ps.sel.size;
+  if (!ps.isMulti) {
+    const ma  = getMoisAnnee(ps.annee);
+    const sel = ma.filter(m => ps.sel.has(m.mois));
+    if (!sel.length) return;
+    fd.append('annee_debut', sel[0].annee);
+    fd.append('mois_debut',  sel[0].mois);
+    fd.append('annee_fin',   sel[sel.length-1].annee);
+    fd.append('mois_fin',    sel[sel.length-1].mois);
+    fd.append('mois_json', JSON.stringify(sel.map(m => [m.annee, m.mois])));
+    nbMoisEstim = sel.length;
+  }
+
+  ps.busy = true; refresh(); clearResult('c'); setProgress('c', 'Envoi au serveur…', 2);
+  const timer = startFakeProgress('c', nbMoisEstim, true);
   try {
     const res  = await fetch(`${API_BASE}/generer-template`, { method: 'POST', body: fd });
     clearInterval(timer);
@@ -1182,6 +1259,7 @@ buildGrid('v'); buildTimeline('v');
 refresh();
 
 // ─── Wake-up Render ───────────────────────────────────────────────────────────
+// Ping silencieux au chargement pour éviter le cold start (free tier)
 fetch(`${API_BASE}/ping`).catch(() => {});
 </script>
 </body>

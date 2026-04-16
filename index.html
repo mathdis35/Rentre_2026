@@ -229,7 +229,7 @@
             <div class="fmt-card on" data-fmt="excel" id="v-fmt-excel">
               <div class="fmt-icon">📊</div>
               <div class="fmt-lbl">Excel multi-feuilles</div>
-                <div class="fmt-desc">1 onglet par mois · max 6</div>
+                <div class="fmt-desc">1 onglet par mois · max 12</div>
             </div>
             <div class="fmt-card" data-fmt="zip" id="v-fmt-zip">
               <div class="fmt-icon">🗜️</div>
@@ -721,8 +721,8 @@ document.querySelectorAll('[data-shortcut]').forEach(btn => {
     if (btn.dataset.shortcut === 'annee') ps.sel = new Set([9,10,11,12,1,2,3,4,5,6]);
     if (btn.dataset.shortcut === 'tout')  ps.sel = new Set(ma.map(m => m.mois));
     if (btn.dataset.shortcut === 'aucun') ps.sel = new Set();
-    if (p === 'v' && S.v.format === 'excel' && ps.sel.size > 6)
-      ps.sel = new Set(getMoisAnnee(ps.annee).filter(m => ps.sel.has(m.mois)).slice(0,6).map(m => m.mois));
+    if (p === 'v' && S.v.format === 'excel' && ps.sel.size > 12)
+      ps.sel = new Set(getMoisAnnee(ps.annee).filter(m => ps.sel.has(m.mois)).slice(0,12).map(m => m.mois));
     buildGrid(p); buildTimeline(p); refresh();
   });
 });
@@ -778,8 +778,8 @@ document.querySelectorAll('[data-fmt]').forEach(card => {
     document.querySelectorAll('[data-fmt]').forEach(c => c.classList.remove('on'));
     card.classList.add('on');
     S.v.format = card.dataset.fmt;
-    if (S.v.format === 'excel' && S.v.sel.size > 6) {
-      S.v.sel = new Set(getMoisAnnee(S.v.annee).filter(m => S.v.sel.has(m.mois)).slice(0,6).map(m => m.mois));
+    if (S.v.format === 'excel' && S.v.sel.size > 12) {
+      S.v.sel = new Set(getMoisAnnee(S.v.annee).filter(m => S.v.sel.has(m.mois)).slice(0,12).map(m => m.mois));
       buildGrid('v'); buildTimeline('v');
     }
     refresh();
@@ -879,7 +879,7 @@ function buildChecklist() {
 // ─── Refresh global ───────────────────────────────────────────────────────────
 function refresh() {
   // Vierge
-  const vExcelOverLimit = S.v.format === 'excel' && S.v.sel.size > 6;
+  const vExcelOverLimit = S.v.format === 'excel' && S.v.sel.size > 12;
   const vOk = !!S.tplFile && S.v.sel.size > 0 && !vExcelOverLimit;
   const vBtn = document.getElementById('v-btn');
   vBtn.disabled = !vOk || S.v.busy;
@@ -888,7 +888,7 @@ function refresh() {
   vHint.style.display = vOk ? 'none' : 'block';
   vHint.textContent = !S.tplFile ? 'Uploadez le template de référence'
     : S.v.sel.size === 0 ? 'Sélectionnez au moins un mois'
-    : vExcelOverLimit ? `Excel multi-feuilles limité à 6 mois — passez en ZIP pour plus`
+    : vExcelOverLimit ? `Excel multi-feuilles limité à 12 mois`
     : '';
 
   // Colorié
@@ -1253,8 +1253,8 @@ document.getElementById('m-btn').addEventListener('click', async () => {
 // ─── Init ──────────────────────────────────────────────────────────────────────
 ['v','c','f'].forEach(p => { buildGrid(p); buildTimeline(p); });
 // Garantir la cohérence : si format excel au démarrage, max 6 mois
-if (S.v.format === 'excel' && S.v.sel.size > 6)
-  S.v.sel = new Set(getMoisAnnee(S.v.annee).filter(m => S.v.sel.has(m.mois)).slice(0,6).map(m => m.mois));
+if (S.v.format === 'excel' && S.v.sel.size > 12)
+  S.v.sel = new Set(getMoisAnnee(S.v.annee).filter(m => S.v.sel.has(m.mois)).slice(0,12).map(m => m.mois));
 buildGrid('v'); buildTimeline('v');
 refresh();
 

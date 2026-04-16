@@ -761,76 +761,35 @@ def generer_template_mois(template_path, output_path, annee, mois):
                     pattern, f"{nom_mois} {annee}", v.upper(), flags=_re.IGNORECASE
                 )
 
-    # ── 4. Supprimer les slots vides au début ─────────────────────────────────
-    if lignes_debut > 0:
-        DELETE_START = 7
-        DELETE_COUNT = lignes_debut
-        FIRST_KEPT   = DELETE_START + DELETE_COUNT
-
-        # Sauvegarder les hauteurs AVANT suppression (bug openpyxl)
-        saved_heights = {
-            r: ws.row_dimensions[r].height
-            for r in range(FIRST_KEPT, ws.max_row + 1)
-        }
-        ws.delete_rows(DELETE_START, DELETE_COUNT)
-
-        # Ré-appliquer les hauteurs décalées
-        for old_r, h in saved_heights.items():
-            new_r = old_r - DELETE_COUNT
-            if new_r >= DELETE_START and h is not None:
-                ws.row_dimensions[new_r].height = h
-
-        # Fix fusions optimisé (8x plus rapide : manipulation directe du set)
-        from openpyxl.worksheet.cell_range import CellRange
-        target_rows = {r for r in range(DELETE_START, ws.max_row + 1)
-                       if (ws.row_dimensions[r].height is None or ws.row_dimensions[r].height >= 10)}
-        for mg in list(ws.merged_cells.ranges):
-            if mg.min_row == mg.max_row and mg.min_row in target_rows:
-                try: ws.merged_cells.ranges.discard(mg)
-                except Exception: pass
-        for r in target_rows:
-            for c1, c2 in ALL_MERGE_PAIRS:
-                ws.merged_cells.ranges.add(
-                    CellRange(f"{get_column_letter(c1)}{r}:{get_column_letter(c2)}{r}"))
-
-    # ── 5. Détecter les slots disponibles après suppression ───────────────────
+    # ── 4. Détecter tous les slots (label_row, num_row) dans le template ────────
     jours_pos = []
     for r in range(1, ws.max_row + 1):
         v = ws.cell(row=r, column=2).value
         if isinstance(v, str) and any(j in v for j in JOURS_FR_LIST):
-            jours_pos.append((r, r + 1))  # (label_row, num_row)
+            jours_pos.append((r, r + 1))
 
-    # ── 6. Écrire les labels de jours dans les slots ──────────────────────────
+    # ── 5. Écrire les jours ouvrés dans les slots correspondants ─────────────
+    # On saute les `slot_debut` premiers slots (début de semaine vide)
+    # et on masque les lignes inutilisées avec height=0 (pas de delete_rows → rapide)
     for i, (rl, rn) in enumerate(jours_pos):
-        if i < len(jours_ouvres):
-            label, num = jours_ouvres[i]
+        jour_idx = i - slot_debut  # index dans jours_ouvres
+        if 0 <= jour_idx < len(jours_ouvres):
+            label, num = jours_ouvres[jour_idx]
             for col in JOURS_COLS:
                 ws.cell(row=rl, column=col).value = label
                 ws.cell(row=rn, column=col).value = num
+            # S'assurer que les lignes du slot sont visibles (hauteur normale)
+            for offset in range(6):
+                rd = ws.row_dimensions[rl + offset]
+                if rd.height is not None and rd.height < 1:
+                    rd.height = None  # reset → hauteur par défaut
         else:
-            # Slot excédentaire : effacer le label (sera supprimé ensuite)
+            # Slot inutilisé : masquer toutes ses lignes (height=0)
+            for offset in range(6):
+                ws.row_dimensions[rl + offset].height = 0
             for col in JOURS_COLS:
                 ws.cell(row=rl, column=col).value = None
                 ws.cell(row=rn, column=col).value = None
-
-    # ── 7. Supprimer les slots vides à la FIN ─────────────────────────────────
-    # Chercher la ligne grise de fermeture (bg=FFC0C0C0) pour la préserver
-    grey_closing_row = None
-    for r in range(ws.max_row, 0, -1):
-        fill = ws.cell(row=r, column=2).fill
-        bg = fill.fgColor.rgb if fill and fill.fgColor and fill.fgColor.type == 'rgb' else None
-        if bg == 'FFC0C0C0':
-            grey_closing_row = r
-            break
-
-    if len(jours_pos) > len(jours_ouvres):
-        last_label_row = jours_pos[len(jours_ouvres) - 1][0]
-        last_bloc_end  = last_label_row + 4
-        delete_from    = last_bloc_end + 1
-        # S'arrêter juste avant la ligne grise de fermeture
-        delete_until   = (grey_closing_row - 1) if grey_closing_row else ws.max_row
-        if delete_from <= delete_until:
-            ws.delete_rows(delete_from, delete_until - delete_from + 1)
 
     wb.save(output_path)
     return len(jours_ouvres)

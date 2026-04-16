@@ -862,8 +862,11 @@ def generate_month_sheet_hide(ws, annee, mois):
                     rd.height = None
         else:
             # Slot inutilisé : masquer + effacer les valeurs
+            # Colonne 1 reçoit un marqueur '__DEL__' pour forcer openpyxl
+            # à écrire la balise <row> dans le XML (nécessaire pour _supprimer_lignes_masquees_xml)
             for offset in range(6):
                 ws.row_dimensions[rl + offset].height = 0
+                ws.cell(row=rl + offset, column=1).value = '__DEL__'
             for col in JOURS_COLS:
                 ws.cell(row=rl,     column=col).value = None
                 ws.cell(row=rl + 1, column=col).value = None
@@ -929,6 +932,7 @@ def _supprimer_lignes_masquees_xml(xlsx_path):
         if row_el.tag != rows_tag:
             continue
         ht = row_el.get('ht')
+        # height=0 → ligne à supprimer (marqueur __DEL__ force openpyxl à écrire la balise <row>)
         if ht is not None and float(ht) == 0:
             hidden_rows.add(int(row_el.get('r', 0)))
             rows_to_remove.append(row_el)

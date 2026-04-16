@@ -252,7 +252,10 @@
     <div class="card prog-block" id="v-prog" style="display:none">
       <div class="prog-header">
         <span class="prog-lbl" id="v-prog-lbl">Initialisation…</span>
-        <span class="prog-pct" id="v-prog-pct" style="color:#8B4400">0%</span>
+        <span style="display:flex;gap:10px;align-items:center">
+          <span id="v-chrono" style="font-size:12px;color:#8B4400;font-weight:600;font-variant-numeric:tabular-nums"></span>
+          <span class="prog-pct" id="v-prog-pct" style="color:#8B4400">0%</span>
+        </span>
       </div>
       <div class="prog-bar"><div class="prog-fill" id="v-prog-fill" style="background:#8B4400"></div></div>
     </div>
@@ -331,7 +334,10 @@
     <div class="card prog-block" id="c-prog" style="display:none">
       <div class="prog-header">
         <span class="prog-lbl" id="c-prog-lbl">Initialisation…</span>
-        <span class="prog-pct" id="c-prog-pct" style="color:#2A5C40">0%</span>
+        <span style="display:flex;gap:10px;align-items:center">
+          <span id="c-chrono" style="font-size:12px;color:#2A5C40;font-weight:600;font-variant-numeric:tabular-nums"></span>
+          <span class="prog-pct" id="c-prog-pct" style="color:#2A5C40">0%</span>
+        </span>
       </div>
       <div class="prog-bar"><div class="prog-fill" id="c-prog-fill" style="background:#2A5C40"></div></div>
     </div>
@@ -452,7 +458,10 @@
     <div class="card prog-block" id="f-prog" style="display:none">
       <div class="prog-header">
         <span class="prog-lbl" id="f-prog-lbl">Initialisation…</span>
-        <span class="prog-pct" id="f-prog-pct" style="color:#1A4A7A">0%</span>
+        <span style="display:flex;gap:10px;align-items:center">
+          <span id="f-chrono" style="font-size:12px;color:#1A4A7A;font-weight:600;font-variant-numeric:tabular-nums"></span>
+          <span class="prog-pct" id="f-prog-pct" style="color:#1A4A7A">0%</span>
+        </span>
       </div>
       <div class="prog-bar"><div class="prog-fill" id="f-prog-fill" style="background:#1A4A7A"></div></div>
     </div>
@@ -487,7 +496,10 @@
     <div class="card prog-block" id="m-prog" style="display:none">
       <div class="prog-header">
         <span class="prog-lbl" id="m-prog-lbl">Initialisation…</span>
-        <span class="prog-pct" id="m-prog-pct" style="color:#5B2A8B">0%</span>
+        <span style="display:flex;gap:10px;align-items:center">
+          <span id="m-chrono" style="font-size:12px;color:#5B2A8B;font-weight:600;font-variant-numeric:tabular-nums"></span>
+          <span class="prog-pct" id="m-prog-pct" style="color:#5B2A8B">0%</span>
+        </span>
       </div>
       <div class="prog-bar"><div class="prog-fill" id="m-prog-fill" style="background:#5B2A8B"></div></div>
     </div>
@@ -918,6 +930,27 @@ function refresh() {
   refreshFusion();
 }
 
+// ─── Chrono global par onglet ─────────────────────────────────────────────────
+const _chronos = {};  // { p: { t0, interval } }
+
+function startChrono(p) {
+  if (_chronos[p]) clearInterval(_chronos[p].interval);
+  const t0 = Date.now();
+  const interval = setInterval(() => {
+    const el = document.getElementById(`${p}-chrono`);
+    if (el) el.textContent = `⏱ ${((Date.now() - t0) / 1000).toFixed(1)}s`;
+  }, 100);
+  _chronos[p] = { t0, interval };
+}
+
+function stopChrono(p) {
+  if (!_chronos[p]) return 0;
+  clearInterval(_chronos[p].interval);
+  const elapsed = (Date.now() - _chronos[p].t0) / 1000;
+  _chronos[p] = null;
+  return elapsed;
+}
+
 // ─── Progression ──────────────────────────────────────────────────────────────
 function setProgress(p, label, pct) {
   const prog = document.getElementById(`${p}-prog`);
@@ -931,8 +964,9 @@ function hideProgress(p) {
 }
 
 // Animation de progression pendant l'appel synchrone (estimation)
+// Estimations réelles : ~4s/mois pour template vierge, ~2s/mois pour colorié
 function startFakeProgress(p, nbMois, withFusion) {
-  const estimMs = nbMois * 20000 + (withFusion ? 10000 : 0);
+  const estimMs = nbMois * 4000 + (withFusion ? 5000 : 0);
   const t0 = Date.now();
   return setInterval(() => {
     const elapsed = Date.now() - t0;
@@ -940,10 +974,10 @@ function startFakeProgress(p, nbMois, withFusion) {
     const idx     = Math.min(nbMois - 1, Math.floor(ratio * nbMois));
     const pct     = Math.round(ratio * 92);
     const lbl     = pct >= 88
-      ? `Finalisation… (le serveur peut prendre jusqu'à 3 min)`
+      ? `Finalisation…`
       : `Traitement mois ${idx + 1} / ${nbMois}…`;
     setProgress(p, lbl, pct);
-  }, 350);
+  }, 200);
 }
 
 function startEtapesProgress(p, etapes) {
@@ -1001,7 +1035,7 @@ document.getElementById('v-btn').addEventListener('click', async () => {
   const sel = ma.filter(m => ps.sel.has(m.mois));
   if (!sel.length || !S.tplFile) return;
 
-  ps.busy = true; refresh(); clearResult('v'); setProgress('v', 'Envoi au serveur…', 2);
+  ps.busy = true; refresh(); clearResult('v'); setProgress('v', 'Envoi au serveur…', 2); startChrono('v');
 
   const fd = new FormData();
   fd.append('template',    S.tplFile, S.tplName);
@@ -1020,6 +1054,7 @@ document.getElementById('v-btn').addEventListener('click', async () => {
     const data = await res.json();
     if (!res.ok || data.error) throw { msg: data.error || 'Erreur serveur', trace: data.trace };
 
+    const elapsed_v = stopChrono('v');
     setProgress('v', 'Prêt !', 100);
     await sleep(300);
     showResult('v', {
@@ -1029,9 +1064,11 @@ document.getElementById('v-btn').addEventListener('click', async () => {
         `📅 ${data.nb_mois} mois`,
         `📆 ${data.nb_jours} jours ouvrés`,
         data.format === 'excel' ? '📊 Excel multi-feuilles' : '🗜️ ZIP',
+        `⏱ ${elapsed_v.toFixed(1)}s`,
       ],
     });
   } catch (err) {
+    stopChrono('v');
     clearInterval(timer);
     showError('v', err.msg || String(err), err.trace);
   } finally {
@@ -1064,7 +1101,7 @@ document.getElementById('c-btn').addEventListener('click', async () => {
     nbMoisEstim = sel.length;
   }
 
-  ps.busy = true; refresh(); clearResult('c'); setProgress('c', 'Envoi au serveur…', 2);
+  ps.busy = true; refresh(); clearResult('c'); setProgress('c', 'Envoi au serveur…', 2); startChrono('c');
   const timer = startFakeProgress('c', nbMoisEstim, true);
   try {
     const res  = await fetch(`${API_BASE}/generer-template`, { method: 'POST', body: fd });
@@ -1072,6 +1109,7 @@ document.getElementById('c-btn').addEventListener('click', async () => {
     const data = await res.json();
     if (!res.ok || data.error) throw { msg: data.error || 'Erreur serveur', trace: data.trace };
 
+    const elapsed_c = stopChrono('c');
     setProgress('c', 'Prêt !', 100);
     await sleep(300);
     showResult('c', {
@@ -1082,9 +1120,11 @@ document.getElementById('c-btn').addEventListener('click', async () => {
         `🎨 ${data.cases_colories ?? '–'} cases coloriées`,
         `🏫 ${data.classes ?? ps.plannings.length} classes`,
         '📊 Excel multi-feuilles',
+        `⏱ ${elapsed_c.toFixed(1)}s`,
       ],
     });
   } catch (err) {
+    stopChrono('c');
     clearInterval(timer);
     showError('c', err.msg || String(err), err.trace);
   } finally {
@@ -1104,7 +1144,7 @@ document.getElementById('f-btn').addEventListener('click', async () => {
   const sel = ma.filter(m => ps.sel.has(m.mois));
   if (!sel.length || !ps.dispos || !ps.tableau || !ps.plannings.length || !S.tplFile) return;
 
-  ps.busy = true; refresh(); clearResult('f'); setProgress('f', 'Envoi au serveur…', 2);
+  ps.busy = true; refresh(); clearResult('f'); setProgress('f', 'Envoi au serveur…', 2); startChrono('f');
 
   const fd = new FormData();
   fd.append('template',       S.tplFile,    S.tplName);
@@ -1130,6 +1170,7 @@ document.getElementById('f-btn').addEventListener('click', async () => {
     const data = await res.json();
     if (!res.ok || data.error) throw { msg: data.error || 'Erreur serveur', trace: data.trace };
 
+    const elapsed_f = stopChrono('f');
     setProgress('f', 'Prêt !', 100);
     await sleep(300);
     showResult('f', {
@@ -1140,9 +1181,11 @@ document.getElementById('f-btn').addEventListener('click', async () => {
         `👥 ${data.formateurs_actifs ?? '–'} formateurs`,
         `✅ ${data.sessions_assignees ?? '–'} sessions`,
         data.creneaux_sans_prof > 0 ? `⚠️ ${data.creneaux_sans_prof} sans prof` : '✅ Complet',
+        `⏱ ${elapsed_f.toFixed(1)}s`,
       ],
     });
   } catch (err) {
+    stopChrono('f');
     clearInterval(timer);
     showError('f', err.msg || String(err), err.trace);
   } finally {
@@ -1225,7 +1268,7 @@ document.getElementById('m-file').addEventListener('change', function() { addFus
 document.getElementById('m-btn').addEventListener('click', async () => {
   const ps = S.m;
   if (ps.fichiers.length < 2 || ps.busy) return;
-  ps.busy = true; refreshFusion(); clearResult('m'); setProgress('m', 'Envoi au serveur…', 5);
+  ps.busy = true; refreshFusion(); clearResult('m'); setProgress('m', 'Envoi au serveur…', 5); startChrono('m');
   const fd = new FormData();
   ps.fichiers.forEach(e => fd.append('fichiers', e.file, e.file.name));
   fd.append('noms_json', JSON.stringify(ps.fichiers.map(e => e.sheetName)));
@@ -1235,14 +1278,19 @@ document.getElementById('m-btn').addEventListener('click', async () => {
     clearInterval(timer);
     const data = await res.json();
     if (!res.ok || data.error) throw { msg: data.error || 'Erreur serveur', trace: data.trace };
+    const elapsed_m = stopChrono('m');
     setProgress('m', 'Prêt !', 100);
     await sleep(300);
     showResult('m', {
       fichier  : data.fichier,
       sessionId: data.session_id,
-      tags: [`📄 ${data.nb_feuilles} feuille${data.nb_feuilles > 1 ? 's' : ''}`],
+      tags: [
+        `📄 ${data.nb_feuilles} feuille${data.nb_feuilles > 1 ? 's' : ''}`,
+        `⏱ ${elapsed_m.toFixed(1)}s`,
+      ],
     });
   } catch (err) {
+    stopChrono('m');
     clearInterval(timer);
     showError('m', err.msg || String(err), err.trace);
   } finally {

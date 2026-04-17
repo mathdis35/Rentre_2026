@@ -1621,6 +1621,63 @@ def generer_template_vierge_route():
         import traceback
         return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
 
+@app.route('/debug-xml')
+def debug_xml():
+    """Route temporaire de debug — inspecte le XML d'un xlsx généré."""
+    import zipfile, io, tempfile
+    from xml.etree import ElementTree as ET
+    NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+
+    # Génère septembre 2026 en mode delete
+    tp = request.args.get('template')
+    if not tp or not os.path.exists(tp):
+        # Cherche le premier template dans /tmp/plannipro
+        for root, dirs, files in os.walk(UPLOAD_FOLDER):
+            for f in files:
+                if f.endswith('.xlsx') and 'template' in f.lower():
+                    tp = os.path.join(root, f)
+                    break
+            if tp:
+                break
+    if not tp:
+        return "Aucun template trouvé", 404
+
+    with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
+        out = tmp.name
+    generer_template_mois(tp, out, 2026, 9, mode='delete')
+
+    result = {}
+    with zipfile.ZipFile(out, 'r') as z:
+        names = z.namelist()
+        result['files'] = names
+        # Shared strings
+        sst = next((n for n in names if 'sharedStrings' in n), None)
+        if sst:
+            sst_tree = ET.fromstring(z.read(sst))
+            strings = []
+            for i, si in enumerate(sst_tree):
+                t = si.find(f'{{{NS}}}t')
+                strings.append(f"{i}: {t.text if t is not None else '?'}")
+            result['sharedStrings'] = strings[:20]
+        # Premières lignes de la feuille
+        sheet = next((n for n in names if 'worksheets/sheet' in n), None)
+        if sheet:
+            stree = ET.fromstring(z.read(sheet))
+            sd = stree.find(f'{{{NS}}}sheetData')
+            rows_info = []
+            for row_el in list(sd)[:20]:
+                r = row_el.get('r')
+                ht = row_el.get('ht')
+                cells = []
+                for c in row_el:
+                    cells.append({'r': c.get('r'), 't': c.get('t'), 'v': (c.find(f'{{{NS}}}v') or ET.Element('x')).text})
+                rows_info.append({'r': r, 'ht': ht, 'cells': cells[:3]})
+            result['first_rows'] = rows_info
+
+    os.unlink(out)
+    return jsonify(result)
+
+
 @app.route('/fusionner', methods=['POST'])
 def fusionner_route():
     sid = str(uuid.uuid4())[:8]

@@ -861,11 +861,8 @@ def generate_month_sheet_hide(ws, annee, mois):
                 if rd.height is not None and rd.height < 1:
                     rd.height = None
         else:
-            # Slot inutilisé : masquer + effacer les valeurs
-            # Colonne 1 reçoit un marqueur '__DEL__' pour forcer openpyxl
-            # à écrire la balise <row> dans le XML (nécessaire pour _supprimer_lignes_masquees_xml)
+            # Slot inutilisé : effacer les valeurs et marquer pour suppression XML
             for offset in range(6):
-                ws.row_dimensions[rl + offset].height = 0
                 ws.cell(row=rl + offset, column=1).value = '__DEL__'
             for col in JOURS_COLS:
                 ws.cell(row=rl,     column=col).value = None
@@ -892,107 +889,122 @@ def generate_month_sheet(ws, annee, mois, mode='delete'):
 # ─── Génération template vierge par mois ─────────────────────────────────────
 def _supprimer_lignes_masquees_xml(xlsx_path):
     """
-    Post-traitement XML : supprime physiquement les lignes height=0 d'un fichier xlsx.
+    Post-traitement XML : supprime physiquement les lignes marquées '__DEL__' en colonne A.
     Bypasse openpyxl (delete_rows O(n²)) en manipulant directement le ZIP/XML.
     Les merged cells qui chevauchent ces lignes sont aussi retirées.
     """
     import zipfile, io
     from xml.etree import ElementTree as ET
 
-    NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+    NS  = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
     ET.register_namespace('', NS)
 
     with zipfile.ZipFile(xlsx_path, 'r') as zin:
-        names  = zin.namelist()
-        blobs  = {n: zin.read(n) for n in names}
+        names = zin.namelist()
+        blobs = {n: zin.read(n) for n in names}
 
-    # Feuille active = xl/worksheets/sheet1.xml (ou sheet avec idx le plus bas)
+    # 1. Trouver l'index de '__DEL__' dans les shared strings
+    sst_name = next((n for n in names if n.endswith('sharedStrings.xml')), None)
+    del_idx  = None
+    if sst_name:
+        sst = ET.fromstring(blobs[sst_name])
+        for i, si in enumerate(sst):
+            t = si.find(f'{{{NS}}}t')
+            if t is not None and t.text == '__DEL__':
+                del_idx = str(i)
+                break
+
+    if del_idx is None:
+        return  # pas de marqueur → rien à faire
+
+    # 2. Traiter chaque feuille
     sheet_names = sorted(
         [n for n in names if n.startswith('xl/worksheets/sheet') and n.endswith('.xml')],
         key=lambda x: int(re.search(r'(\d+)', x.split('/')[-1]).group(1))
     )
-    if not sheet_names:
-        return
 
-    sheet_name = sheet_names[0]
-    tree = ET.fromstring(blobs[sheet_name])
-
-    # 1. Identifier les numéros de lignes à supprimer (ht="0")
     rows_tag   = f'{{{NS}}}row'
+    cell_tag   = f'{{{NS}}}c'
     merged_tag = f'{{{NS}}}mergeCells'
     mc_tag     = f'{{{NS}}}mergeCell'
 
-    hidden_rows = set()
-    sheetData   = tree.find(f'{{{NS}}}sheetData')
-    if sheetData is None:
-        return
-
-    rows_to_remove = []
-    for row_el in sheetData:
-        if row_el.tag != rows_tag:
+    for sheet_name in sheet_names:
+        tree      = ET.fromstring(blobs[sheet_name])
+        sheetData = tree.find(f'{{{NS}}}sheetData')
+        if sheetData is None:
             continue
-        ht = row_el.get('ht')
-        # height=0 → ligne à supprimer (marqueur __DEL__ force openpyxl à écrire la balise <row>)
-        if ht is not None and float(ht) == 0:
-            hidden_rows.add(int(row_el.get('r', 0)))
-            rows_to_remove.append(row_el)
 
-    for row_el in rows_to_remove:
-        sheetData.remove(row_el)
+        hidden_rows    = set()
+        rows_to_remove = []
 
-    if not hidden_rows:
-        return  # rien à faire
-
-    # 2. Renuméroter les lignes restantes
-    sorted_hidden = sorted(hidden_rows)
-    row_els = [el for el in sheetData if el.tag == rows_tag]
-    for row_el in row_els:
-        old_r = int(row_el.get('r'))
-        shift = sum(1 for h in sorted_hidden if h < old_r)
-        if shift == 0:
-            continue
-        new_r = old_r - shift
-        row_el.set('r', str(new_r))
-        for cell_el in row_el:
-            coord = cell_el.get('r', '')
-            col_part = ''.join(c for c in coord if c.isalpha())
-            if col_part:
-                cell_el.set('r', f'{col_part}{new_r}')
-
-    # 3. Nettoyer les mergeCells qui chevauchent les lignes supprimées
-    def _shift_row(r):
-        return r - sum(1 for h in sorted_hidden if h < r)
-
-    for mc_parent in tree.iter(merged_tag):
-        to_remove = []
-        for mc in mc_parent:
-            if mc.tag != mc_tag:
+        for row_el in sheetData:
+            if row_el.tag != rows_tag:
                 continue
-            ref = mc.get('ref', '')
-            m = re.match(r'([A-Z]+)(\d+):([A-Z]+)(\d+)', ref)
-            if not m:
-                continue
-            c1, r1, c2, r2 = m.group(1), int(m.group(2)), m.group(3), int(m.group(4))
-            # Supprimer si une des lignes est cachée
-            if any(r1 <= h <= r2 for h in hidden_rows):
-                to_remove.append(mc)
-            else:
-                new_r1 = _shift_row(r1)
-                new_r2 = _shift_row(r2)
-                if new_r1 != r1 or new_r2 != r2:
-                    mc.set('ref', f'{c1}{new_r1}:{c2}{new_r2}')
-        for mc in to_remove:
-            mc_parent.remove(mc)
+            # Cherche une cellule en colonne A (r="A<n>") avec valeur = del_idx
+            for cell_el in row_el:
+                if cell_el.tag != cell_tag:
+                    continue
+                coord = cell_el.get('r', '')
+                if not re.match(r'^A\d+$', coord):
+                    continue
+                if cell_el.get('t') == 's' and cell_el.find(f'{{{NS}}}v') is not None:
+                    if cell_el.find(f'{{{NS}}}v').text == del_idx:
+                        hidden_rows.add(int(row_el.get('r', 0)))
+                        rows_to_remove.append(row_el)
+                break
 
-    # 4. Réécrire le ZIP
-    new_xml = ET.tostring(tree, encoding='UTF-8', xml_declaration=True)
+        for row_el in rows_to_remove:
+            sheetData.remove(row_el)
+
+        if not hidden_rows:
+            continue  # feuille inchangée
+
+        # 3. Renuméroter les lignes restantes
+        sorted_hidden = sorted(hidden_rows)
+
+        def _shift(r):
+            return r - sum(1 for h in sorted_hidden if h < r)
+
+        for row_el in sheetData:
+            if row_el.tag != rows_tag:
+                continue
+            old_r = int(row_el.get('r'))
+            new_r = _shift(old_r)
+            if new_r != old_r:
+                row_el.set('r', str(new_r))
+                for cell_el in row_el:
+                    coord = cell_el.get('r', '')
+                    col_part = ''.join(c for c in coord if c.isalpha())
+                    if col_part:
+                        cell_el.set('r', f'{col_part}{new_r}')
+
+        # 4. Nettoyer les mergeCells
+        for mc_parent in tree.iter(merged_tag):
+            to_remove = []
+            for mc in mc_parent:
+                if mc.tag != mc_tag:
+                    continue
+                ref = mc.get('ref', '')
+                m2 = re.match(r'([A-Z]+)(\d+):([A-Z]+)(\d+)', ref)
+                if not m2:
+                    continue
+                c1, r1, c2, r2 = m2.group(1), int(m2.group(2)), m2.group(3), int(m2.group(4))
+                if any(r1 <= h <= r2 for h in hidden_rows):
+                    to_remove.append(mc)
+                else:
+                    nr1, nr2 = _shift(r1), _shift(r2)
+                    if nr1 != r1 or nr2 != r2:
+                        mc.set('ref', f'{c1}{nr1}:{c2}{nr2}')
+            for mc in to_remove:
+                mc_parent.remove(mc)
+
+        blobs[sheet_name] = ET.tostring(tree, encoding='UTF-8', xml_declaration=True)
+
+    # 5. Réécrire le ZIP avec toutes les feuilles mises à jour
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zout:
         for n in names:
-            if n == sheet_name:
-                zout.writestr(n, new_xml)
-            else:
-                zout.writestr(n, blobs[n])
+            zout.writestr(n, blobs[n])
     buf.seek(0)
     with open(xlsx_path, 'wb') as f:
         f.write(buf.read())

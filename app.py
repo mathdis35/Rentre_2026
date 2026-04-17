@@ -903,19 +903,7 @@ def _supprimer_lignes_masquees_xml(xlsx_path):
         names = zin.namelist()
         blobs = {n: zin.read(n) for n in names}
 
-    # 1. Trouver l'index de '__DEL__' dans les shared strings
-    sst_name = next((n for n in names if n.endswith('sharedStrings.xml')), None)
-    del_idx  = None
-    if sst_name:
-        sst = ET.fromstring(blobs[sst_name])
-        for i, si in enumerate(sst):
-            t = si.find(f'{{{NS}}}t')
-            if t is not None and t.text == '__DEL__':
-                del_idx = str(i)
-                break
-
-    if del_idx is None:
-        return  # pas de marqueur → rien à faire
+    # (shared strings non utilisées — openpyxl écrit en inlineStr)
 
     # 2. Traiter chaque feuille
     sheet_names = sorted(
@@ -940,17 +928,19 @@ def _supprimer_lignes_masquees_xml(xlsx_path):
         for row_el in sheetData:
             if row_el.tag != rows_tag:
                 continue
-            # Cherche une cellule en colonne A (r="A<n>") avec valeur = del_idx
+            # Cherche __DEL__ en colonne A — openpyxl écrit en inlineStr
             for cell_el in row_el:
                 if cell_el.tag != cell_tag:
                     continue
-                coord = cell_el.get('r', '')
-                if not re.match(r'^A\d+$', coord):
+                if not re.match(r'^A\d+$', cell_el.get('r', '')):
                     continue
-                if cell_el.get('t') == 's' and cell_el.find(f'{{{NS}}}v') is not None:
-                    if cell_el.find(f'{{{NS}}}v').text == del_idx:
-                        hidden_rows.add(int(row_el.get('r', 0)))
-                        rows_to_remove.append(row_el)
+                if cell_el.get('t') == 'inlineStr':
+                    is_el = cell_el.find(f'{{{NS}}}is')
+                    if is_el is not None:
+                        t_el = is_el.find(f'{{{NS}}}t')
+                        if t_el is not None and t_el.text == '__DEL__':
+                            hidden_rows.add(int(row_el.get('r', 0)))
+                            rows_to_remove.append(row_el)
                 break
 
         for row_el in rows_to_remove:

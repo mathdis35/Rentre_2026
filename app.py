@@ -1621,26 +1621,25 @@ def generer_template_vierge_route():
         import traceback
         return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
 
-@app.route('/debug-xml')
+@app.route('/debug-xml', methods=['GET', 'POST'])
 def debug_xml():
     """Route temporaire de debug — inspecte le XML d'un xlsx généré."""
+    if request.method == 'GET':
+        return '''<form method="post" enctype="multipart/form-data">
+            <input type="file" name="template">
+            <button type="submit">Analyser</button>
+        </form>'''
+
     import zipfile, io, tempfile
     from xml.etree import ElementTree as ET
     NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 
-    # Génère septembre 2026 en mode delete
-    tp = request.args.get('template')
-    if not tp or not os.path.exists(tp):
-        # Cherche le premier template dans /tmp/plannipro
-        for root, dirs, files in os.walk(UPLOAD_FOLDER):
-            for f in files:
-                if f.endswith('.xlsx') and 'template' in f.lower():
-                    tp = os.path.join(root, f)
-                    break
-            if tp:
-                break
-    if not tp:
-        return "Aucun template trouvé", 404
+    tf = request.files.get('template')
+    if not tf:
+        return "Template manquant", 400
+    with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
+        tp = tmp.name
+    tf.save(tp)
 
     with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
         out = tmp.name

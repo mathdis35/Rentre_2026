@@ -186,21 +186,12 @@
       Jours ouvrés et fériés calculés automatiquement. <strong>Jusqu'à 12 mois en une seule opération.</strong>
     </div>
 
-    <!-- Template mémorisé (vierge) -->
-    <div id="v-stored" class="stored-ok" style="display:none;margin-bottom:16px;background:#FFF7F2;border:1px solid #F0CAAA;color:#8B4400">
-      <span style="font-size:16px">✅</span>
-      <div class="stored-info">
-        <div class="stored-name" id="v-stored-name"></div>
-        <div class="stored-sub">Template mémorisé — pas besoin de le ré-uploader</div>
-      </div>
-      <button class="pb pb-gh" id="v-tpl-change" style="font-size:11px">Changer</button>
-    </div>
-    <div id="v-upload" style="margin-bottom:16px">
-      <div class="drop-zone" id="v-tpl-drop" style="--accent:#8B4400;--accent-bg:#FFF7F2">
-        <input type="file" id="v-tpl-file" accept=".xlsx" style="z-index:2"/>
-        <div class="dz-icon">📎</div>
-        <div class="dz-label">Déposez le template de référence</div>
-        <div class="dz-hint">template_vierge_SEPTEMBRE_2026.xlsx</div>
+    <!-- Template embarqué -->
+    <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:10px;margin-bottom:16px;background:#FFF7F2;border:1px solid #F0CAAA;color:#8B4400">
+      <span style="font-size:16px">📎</span>
+      <div>
+        <div style="font-weight:600;font-size:13px">template_vierge_SEPTEMBRE_2026.xlsx</div>
+        <div style="font-size:11px;opacity:.7;margin-top:1px">Template de référence embarqué — aucun upload nécessaire</div>
       </div>
     </div>
 
@@ -293,6 +284,7 @@
       <div class="stored-info">
         <div class="stored-name" id="c-stored-name"></div>
         <div class="stored-sub" id="c-stored-sub">Template mémorisé — pas besoin de le ré-uploader</div>
+        <div id="c-mois-couverts" style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px"></div>
       </div>
       <button class="pb pb-gh" id="c-tpl-change" style="font-size:11px">Changer</button>
     </div>
@@ -364,8 +356,8 @@
   <section id="panel-formateurs" class="tab-panel">
 
     <div class="info-banner" style="background:#EFF4FF;border:1px solid #B8CFEE;color:#0f2d52">
-      <strong>Planning formateurs</strong> — Assignation automatique selon disponibilités et heures contractuelles.
-      Récapitulatif des heures par formateur et matière inclus dans le fichier final.
+      <strong>Planning formateurs</strong> — Uploadez une fois le <strong>tableau formateurs</strong> (CLASSE / FORMATEUR / MATIÈRE / HEURES) — il sera mémorisé.
+      Ajoutez ensuite les <strong>disponibilités</strong> et le <strong>planning colorié</strong> des classes pour générer l'assignation automatique.
     </div>
 
     <div class="g2w">
@@ -379,7 +371,8 @@
             <span style="font-size:16px">✅</span>
             <div class="stored-info">
               <div class="stored-name" id="f-stored-name"></div>
-              <div class="stored-sub">Template mémorisé</div>
+              <div class="stored-sub">Tableau formateurs mémorisé — CLASSE / FORMATEUR / MATIÈRE / HEURES</div>
+              <div id="f-mois-couverts" style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px"></div>
             </div>
             <button class="pb pb-gh" id="f-tpl-change" style="font-size:11px">Changer</button>
           </div>
@@ -392,42 +385,15 @@
             </div>
           </div>
 
-          <!-- Dispos + Tableau côte à côte -->
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px">
-            <div id="f-dispos-wrap">
-              <div id="f-dispos-stored" style="display:none;background:#EFF4FF;border:1px solid #B8CFEE;border-radius:9px;padding:10px 12px;font-size:12px;color:#1A4A7A">
-                <div style="display:flex;align-items:center;gap:6px">
-                  <span>✅</span>
-                  <span id="f-dispos-name" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500"></span>
-                  <button id="f-dispos-del" style="border:none;background:none;cursor:pointer;color:#bbb;font-size:14px">×</button>
-                </div>
-              </div>
-              <div id="f-dispos-upload">
-                <div class="drop-zone" id="f-dispos-drop" style="padding:16px 10px;--accent:#1A4A7A;--accent-bg:#EFF4FF">
-                  <input type="file" id="f-dispos-file" accept=".xlsx" style="z-index:2"/>
-                  <div style="font-size:18px;margin-bottom:4px">📅</div>
-                  <div style="font-size:12px;font-weight:500;margin-bottom:2px">Disponibilités</div>
-                  <div style="font-size:10px;color:#bbb">Tableau_disponibilites.xlsx</div>
-                </div>
-              </div>
+          <!-- Disponibilités (multi-fichiers) -->
+          <div style="margin-bottom:12px">
+            <div class="drop-zone" id="f-dispos-drop" style="padding:16px 10px;--accent:#1A4A7A;--accent-bg:#EFF4FF">
+              <input type="file" id="f-dispos-file" accept=".xlsx" multiple style="z-index:2"/>
+              <div style="font-size:18px;margin-bottom:4px">📅</div>
+              <div style="font-size:12px;font-weight:500;margin-bottom:2px" id="f-dispos-lbl">Disponibilités formateurs</div>
+              <div style="font-size:10px;color:#bbb">Plusieurs fichiers OK — un par formateur</div>
             </div>
-            <div id="f-tableau-wrap">
-              <div id="f-tableau-stored" style="display:none;background:#EFF4FF;border:1px solid #B8CFEE;border-radius:9px;padding:10px 12px;font-size:12px;color:#1A4A7A">
-                <div style="display:flex;align-items:center;gap:6px">
-                  <span>✅</span>
-                  <span id="f-tableau-name" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500"></span>
-                  <button id="f-tableau-del" style="border:none;background:none;cursor:pointer;color:#bbb;font-size:14px">×</button>
-                </div>
-              </div>
-              <div id="f-tableau-upload">
-                <div class="drop-zone" id="f-tableau-drop" style="padding:16px 10px;--accent:#1A4A7A;--accent-bg:#EFF4FF">
-                  <input type="file" id="f-tableau-file" accept=".xlsx" style="z-index:2"/>
-                  <div style="font-size:18px;margin-bottom:4px">👥</div>
-                  <div style="font-size:12px;font-weight:500;margin-bottom:2px">Formateurs/Matières</div>
-                  <div style="font-size:10px;color:#bbb">Tableau_formateurs.xlsx</div>
-                </div>
-              </div>
-            </div>
+            <div class="file-list" id="f-dispos-files"></div>
           </div>
 
           <!-- Plannings classes -->
@@ -525,9 +491,9 @@
 
 <!-- ══════════════════════════════════════════════════ JAVASCRIPT ══ -->
 <script>
-  // ⚠️ Remplacer par l'URL Render après déploiement
-  // Exemple : window.API_BASE = 'https://plannipro.onrender.com';
-  window.API_BASE = 'https://rentre-2026.onrender.com';
+  window.API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+    ? ''
+    : 'https://rentre-2026.onrender.com';
 </script>
 <script>
 'use strict';
@@ -576,9 +542,9 @@ const S = {
   tplFile: null, tplName: null,                          // template partagé (vierge + formateurs)
   v: { sel: new Set([9,10,11,12,1,2]), annee: 2026, format: 'excel', mode: 'delete', busy: false },
   c: { sel: new Set([9,10,11,12,1,2,3,4,5,6]), annee: 2026, plannings: [],
-       tplFile: null, tplName: null, isMulti: false,     busy: false },  // template propre à colorié
+       tplFile: null, tplName: null, isMulti: false, moisCouverts: [], busy: false },
   f: { sel: new Set([9,10,11,12,1,2,3,4,5,6]), annee: 2026, plannings: [],
-       dispos: null, tableau: null,                       busy: false },
+       dispos: [], moisCouverts: [], busy: false },
   m: { fichiers: [], busy: false },
 };
 
@@ -593,14 +559,49 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 // ─── Template global mémorisé ─────────────────────────────────────────────────
+async function verifierTemplate(file, panel) {
+  const el = document.getElementById(`${panel}-mois-couverts`);
+  console.log('[verifierTemplate]', panel, 'el=', el, 'file=', file?.name);
+  if (!el) return;
+  el.innerHTML = '<span style="font-size:11px;opacity:.6">Analyse…</span>';
+  try {
+    const fd = new FormData();
+    fd.append('template', file, file.name);
+    const res  = await fetch(`${API_BASE}/verifier-template`, { method: 'POST', body: fd });
+    const data = await res.json();
+    console.log('[verifierTemplate] response:', data);
+    S[panel].moisCouverts = data.mois_couverts || [];
+    renderMoisCouverts(panel);
+    refresh();
+  } catch (err) {
+    console.error('[verifierTemplate] erreur:', err);
+    el.innerHTML = '';
+  }
+}
+
+function renderMoisCouverts(panel) {
+  const el = document.getElementById(`${panel}-mois-couverts`);
+  if (!el) return;
+  const acc = ACCENTS[panel];
+  const mois = S[panel].moisCouverts || [];
+  if (!mois.length) { el.innerHTML = ''; return; }
+  el.innerHTML = mois.map(m =>
+    `<span style="font-size:10px;font-weight:600;background:rgba(0,0,0,.07);border-radius:99px;padding:2px 8px">${MOIS_COURT[m.mois-1]} ${m.annee}</span>`
+  ).join('');
+}
+
 function setTemplate(file) {
   S.tplFile = file; S.tplName = file.name;
+  S.f.moisCouverts = [];
   syncTemplateBadge();
   syncTemplateBanners();
+  verifierTemplate(file, 'f');
   refresh();
 }
 function clearTemplate() {
   S.tplFile = null; S.tplName = null;
+  S.f.moisCouverts = [];
+  document.getElementById('f-mois-couverts').innerHTML = '';
   syncTemplateBadge();
   syncTemplateBanners();
   refresh();
@@ -658,23 +659,21 @@ function syncColorieTemplate() {
 }
 
 function setColorieTemplate(file) {
-  // Détecte multi-feuilles via nombre de feuilles : on lit le ZIP pour compter les sheet XML
   const reader = new FileReader();
   reader.onload = async (e) => {
     let isMulti = false;
     try {
       const bytes = new Uint8Array(e.target.result);
-      // Compte les entrées xl/worksheets/sheet*.xml dans le ZIP
       const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, 4000));
-      // Cherche "xl/worksheets/sheet2" dans le central directory (début du ZIP)
-      // Approche simple : chercher "sheet2.xml" dans les premiers octets
       isMulti = text.includes('sheet2.xml');
     } catch (_) {}
     S.c.tplFile = file;
     S.c.tplName = file.name;
     S.c.isMulti = isMulti;
+    S.c.moisCouverts = [];
     syncColorieTemplate();
     refresh();
+    verifierTemplate(file, 'c');
   };
   reader.readAsArrayBuffer(file.slice(0, 8000));
 }
@@ -866,63 +865,86 @@ document.getElementById('c-pla-file').addEventListener('change', function() { ad
 setupDrop(document.getElementById('f-pla-drop'), files => addPlannings('f', files));
 document.getElementById('f-pla-file').addEventListener('change', function() { addPlannings('f', this.files); });
 
-// ─── Fichiers formateurs (dispos + tableau) ───────────────────────────────────
-function setFichierF(type, file) {
-  S.f[type] = file;
-  document.getElementById(`f-${type}-stored`).style.display = 'block';
-  document.getElementById(`f-${type}-upload`).style.display = 'none';
-  document.getElementById(`f-${type}-name`).textContent = file.name;
-  refresh();
-}
-function clearFichierF(type) {
-  S.f[type] = null;
-  document.getElementById(`f-${type}-stored`).style.display = 'none';
-  document.getElementById(`f-${type}-upload`).style.display = 'block';
-  refresh();
-}
-
-['dispos','tableau'].forEach(type => {
-  document.getElementById(`f-${type}-file`).addEventListener('change', function() {
-    if (this.files[0]) setFichierF(type, this.files[0]);
+// ─── Fichiers disponibilités formateurs (multi) ───────────────────────────────
+function addDispos(files) {
+  Array.from(files).filter(f => f.name.endsWith('.xlsx')).forEach(f => {
+    if (!S.f.dispos.find(d => d.name === f.name)) S.f.dispos.push(f);
   });
-  setupDrop(document.getElementById(`f-${type}-drop`), files => {
-    const f = Array.from(files).find(f => f.name.endsWith('.xlsx'));
-    if (f) setFichierF(type, f);
-  });
-  document.getElementById(`f-${type}-del`).addEventListener('click', () => clearFichierF(type));
+  renderDispos(); refresh();
+}
+function removeDispos(name) {
+  S.f.dispos = S.f.dispos.filter(f => f.name !== name);
+  renderDispos(); refresh();
+}
+function renderDispos() {
+  const lbl = document.getElementById('f-dispos-lbl');
+  const list = document.getElementById('f-dispos-files');
+  lbl.textContent = S.f.dispos.length ? `${S.f.dispos.length} fichier${S.f.dispos.length>1?'s':''} chargé${S.f.dispos.length>1?'s':''}` : 'Disponibilités formateurs';
+  list.innerHTML = S.f.dispos.map(f =>
+    `<div class="file-chip" style="background:#EFF4FF;color:#1A4A7A">
+      <span style="font-size:13px">📅</span>
+      <span class="file-chip-name">${f.name}</span>
+      <button class="file-chip-del" onclick="removeDispos('${f.name}')">×</button>
+    </div>`
+  ).join('');
+}
+document.getElementById('f-dispos-file').addEventListener('change', function() {
+  if (this.files.length) addDispos(this.files);
 });
+setupDrop(document.getElementById('f-dispos-drop'), files => addDispos(files));
 
 // ─── Checklist formateurs ─────────────────────────────────────────────────────
 function buildChecklist() {
   const f = S.f;
+  const ma = getMoisAnnee(f.annee);
+
+  // Vérif mois manquants dans le template
+  let moisManquants = [];
+  if (S.tplFile && f.moisCouverts.length > 0 && f.sel.size > 0) {
+    const couvertsSet = new Set(f.moisCouverts.map(m => `${m.mois}/${m.annee}`));
+    moisManquants = ma.filter(m => f.sel.has(m.mois) && !couvertsSet.has(`${m.mois}/${m.annee}`));
+  }
+
+  const tplVal = S.tplFile
+    ? (f.moisCouverts.length > 0 ? `${f.moisCouverts.length} feuille${f.moisCouverts.length>1?'s':''}` : S.tplName)
+    : null;
+
   const items = [
-    { label: 'Template de référence',      ok: !!S.tplFile,          val: S.tplName },
-    { label: 'Disponibilités formateurs',  ok: !!f.dispos,           val: f.dispos?.name },
-    { label: 'Tableau formateurs/matières',ok: !!f.tableau,          val: f.tableau?.name },
-    { label: 'Plannings classes',           ok: f.plannings.length > 0, val: f.plannings.length > 0 ? `${f.plannings.length} fichier${f.plannings.length>1?'s':''}` : null },
-    { label: 'Mois sélectionnés',           ok: f.sel.size > 0,      val: f.sel.size > 0 ? `${f.sel.size} mois` : null },
+    { label: 'Template de référence',       ok: !!S.tplFile,            val: tplVal },
+    { label: 'Disponibilités formateurs',   ok: f.dispos.length > 0,    val: f.dispos.length > 0 ? `${f.dispos.length} fichier${f.dispos.length>1?'s':''}` : null },
+    { label: 'Tableau formateurs (template)', ok: !!S.tplFile,           val: S.tplName },
+    { label: 'Plannings classes',            ok: f.plannings.length > 0, val: f.plannings.length > 0 ? `${f.plannings.length} fichier${f.plannings.length>1?'s':''}` : null },
+    { label: 'Mois sélectionnés',            ok: f.sel.size > 0,         val: f.sel.size > 0 ? `${f.sel.size} mois` : null },
   ];
-  document.getElementById('f-checklist').innerHTML = items.map(({ label, ok, val }) => `
+
+  let html = items.map(({ label, ok, val }) => `
     <div class="cl-item">
       <span>${ok ? '✅' : '⬜'}</span>
       <span class="cl-lbl ${ok ? 'cl-done' : 'cl-pend'}">${label}</span>
       ${val ? `<span class="cl-val" style="color:#1A4A7A">${esc(val)}</span>` : ''}
     </div>
   `).join('');
+
+  if (moisManquants.length > 0) {
+    html += `<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#fff8ed;border:1px solid #f0c070;font-size:11px;color:#8B6000">
+      ⚠️ <strong>Mois absents du template :</strong> ${moisManquants.map(m => `${MOIS_COURT[m.mois-1]} ${m.annee}`).join(', ')}
+    </div>`;
+  }
+
+  document.getElementById('f-checklist').innerHTML = html;
 }
 
 // ─── Refresh global ───────────────────────────────────────────────────────────
 function refresh() {
   // Vierge
   const vExcelOverLimit = S.v.format === 'excel' && S.v.sel.size > 12;
-  const vOk = !!S.tplFile && S.v.sel.size > 0 && !vExcelOverLimit;
+  const vOk = S.v.sel.size > 0 && !vExcelOverLimit;
   const vBtn = document.getElementById('v-btn');
   vBtn.disabled = !vOk || S.v.busy;
   vBtn.textContent = S.v.busy ? '⏳ Génération…' : `📋 Générer ${S.v.sel.size > 0 ? S.v.sel.size + ' mois' : ''}`;
   const vHint = document.getElementById('v-hint');
   vHint.style.display = vOk ? 'none' : 'block';
-  vHint.textContent = !S.tplFile ? 'Uploadez le template de référence'
-    : S.v.sel.size === 0 ? 'Sélectionnez au moins un mois'
+  vHint.textContent = S.v.sel.size === 0 ? 'Sélectionnez au moins un mois'
     : vExcelOverLimit ? `Excel multi-feuilles limité à 12 mois`
     : '';
 
@@ -942,7 +964,7 @@ function refresh() {
 
   // Formateurs
   const f   = S.f;
-  const fOk = !!S.tplFile && !!f.dispos && !!f.tableau && f.plannings.length > 0 && f.sel.size > 0;
+  const fOk = !!S.tplFile && f.dispos.length > 0 && f.plannings.length > 0 && f.sel.size > 0;
   const fBtn = document.getElementById('f-btn');
   fBtn.disabled = !fOk || f.busy;
   fBtn.textContent = f.busy ? '⏳ Traitement…' : '⚡ Générer le planning';
@@ -1055,12 +1077,11 @@ document.getElementById('v-btn').addEventListener('click', async () => {
   const ps  = S.v;
   const ma  = getMoisAnnee(ps.annee);
   const sel = ma.filter(m => ps.sel.has(m.mois));
-  if (!sel.length || !S.tplFile) return;
+  if (!sel.length) return;
 
   ps.busy = true; refresh(); clearResult('v'); setProgress('v', 'Envoi au serveur…', 2); startChrono('v');
 
   const fd = new FormData();
-  fd.append('template',        S.tplFile, S.tplName);
   fd.append('annee_debut',     sel[0].annee);
   fd.append('mois_debut',      sel[0].mois);
   fd.append('annee_fin',       sel[sel.length-1].annee);
@@ -1187,14 +1208,14 @@ document.getElementById('f-btn').addEventListener('click', async () => {
   const ps  = S.f;
   const ma  = getMoisAnnee(ps.annee);
   const sel = ma.filter(m => ps.sel.has(m.mois));
-  if (!sel.length || !ps.dispos || !ps.tableau || !ps.plannings.length || !S.tplFile) return;
+  console.log('[f-btn] sel=', sel.length, 'dispos=', !!ps.dispos, 'plannings=', ps.plannings.length, 'tpl=', !!S.tplFile, 'busy=', ps.busy);
+  if (!sel.length || !ps.dispos.length || !ps.plannings.length || !S.tplFile) { console.warn('[f-btn] guard bloqué'); return; }
 
   ps.busy = true; refresh(); clearResult('f'); setProgress('f', 'Envoi au serveur…', 2); startChrono('f');
 
   const fd = new FormData();
-  fd.append('template',       S.tplFile,    S.tplName);
-  fd.append('disponibilites', ps.dispos,   ps.dispos.name);
-  fd.append('formateurs',     ps.tableau,  ps.tableau.name);
+  fd.append('template', S.tplFile, S.tplName);
+  ps.dispos.forEach((f, i) => fd.append(`dispos_${i}`, f, f.name));
   ps.plannings.forEach((f, i) => fd.append(`planning_${i}`, f, f.name));
   fd.append('annee_debut', sel[0].annee);
   fd.append('mois_debut',  sel[0].mois);

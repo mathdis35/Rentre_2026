@@ -159,6 +159,7 @@
 <header class="header">
   <div class="header-inner">
     <div class="logo">Planni<span>Pro</span></div>
+    <div id="version-badge" title="Version et heure de démarrage du serveur" style="font-size:11px;color:#888;white-space:nowrap;margin-left:4px;"></div>
 
     <nav class="tabs-nav" id="tabs-nav">
       <button class="tab-btn active" data-tab="vierge">📋 Template vierge</button>
@@ -1363,8 +1364,16 @@ buildGrid('v'); buildTimeline('v');
 refresh();
 
 // ─── Wake-up Render ───────────────────────────────────────────────────────────
-// Ping silencieux au chargement pour éviter le cold start (free tier)
 fetch(`${API_BASE}/ping`).catch(() => {});
+
+// ─── Badge version ────────────────────────────────────────────────────────────
+fetch(`${API_BASE}/version`)
+  .then(r => r.json())
+  .then(d => {
+    const el = document.getElementById('version-badge');
+    if (el) el.textContent = `v${d.version} — démarré le ${d.started}`;
+  })
+  .catch(() => {});
 </script>
 </body>
 </html>

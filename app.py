@@ -16,6 +16,9 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
+APP_VERSION   = "1.5.0"
+APP_STARTED   = datetime.datetime.now().strftime("%d/%m/%Y à %H:%M:%S")
+
 @app.after_request
 def add_cors_headers(response):
     response.headers['Access-Control-Allow-Origin'] = '*'
@@ -1273,6 +1276,10 @@ def index():
 def ping():
     return jsonify({'ok': True})
 
+@app.route('/version')
+def version():
+    return jsonify({'version': APP_VERSION, 'started': APP_STARTED})
+
 def extraire_mois_feuilles(wb):
     """Retourne la liste des mois/années couverts par les feuilles du workbook."""
     couverts = []
@@ -1598,7 +1605,7 @@ def _appliquer_mois_sur_feuille(ws, annee, mois):
     # Restaurer le style de la closing row depuis le template (colonne par colonne)
     import base64 as _b64, io as _io
     from openpyxl.styles import Border, Side, PatternFill
-    _tpl_ws = openpyxl.load_workbook(_io.BytesIO(_b64.b64decode(_TEMPLATE_VIERGE_B64))).active
+    _tpl_ws = load_workbook(_io.BytesIO(_b64.b64decode(_TEMPLATE_VIERGE_B64))).active
     ws.row_dimensions[closing_row].height = _tpl_ws.row_dimensions[TEMPLATE_LAST_ROW].height
     for c in range(1, _tpl_ws.max_column + 1):
         src = _tpl_ws.cell(TEMPLATE_LAST_ROW, c)

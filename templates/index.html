@@ -229,19 +229,6 @@
             </div>
           </div>
 
-          <div class="stitle" style="color:#8B4400;margin-top:14px">Mode de génération</div>
-          <div class="fmt-cards" style="--accent:#8B4400;--accent-bg:#FFF7F2" id="v-mode-cards">
-            <div class="fmt-card on" data-mode="delete" id="v-mode-delete">
-              <div class="fmt-icon">✂️</div>
-              <div class="fmt-lbl">Suppression</div>
-              <div class="fmt-desc">Lignes inutiles supprimées — fichier propre</div>
-            </div>
-            <div class="fmt-card" data-mode="hide" id="v-mode-hide">
-              <div class="fmt-icon">👁️</div>
-              <div class="fmt-lbl">Masquage</div>
-              <div class="fmt-desc">Lignes masquées (height=0) — plus rapide</div>
-            </div>
-          </div>
         </div>
         <div class="card" style="padding:17px;flex:1">
           <div class="stitle" style="color:#8B4400">Aperçu sélection</div>
@@ -572,6 +559,20 @@ async function verifierTemplate(file, panel) {
     console.log('[verifierTemplate] response:', data);
     S[panel].moisCouverts = data.mois_couverts || [];
     renderMoisCouverts(panel);
+    if (panel === 'c' && S.c.moisCouverts.length > 0 && !S.c.isMulti) {
+      // Détecter l'année scolaire de départ (mois sep-déc → annee, mois jan-août → annee-1)
+      const premiers = S.c.moisCouverts.filter(m => m.mois >= 9);
+      const anneeDebut = premiers.length > 0
+        ? premiers[0].annee
+        : S.c.moisCouverts[0].annee - 1;
+      S.c.annee = anneeDebut;
+      // Mettre à jour le select d'année
+      const anneeSelect = document.querySelector('[data-annee-p="c"]');
+      if (anneeSelect) anneeSelect.value = anneeDebut;
+      // Sélectionner uniquement les mois couverts
+      S.c.sel = new Set(S.c.moisCouverts.map(m => m.mois));
+      buildGrid('c'); buildTimeline('c');
+    }
     refresh();
   } catch (err) {
     console.error('[verifierTemplate] erreur:', err);
@@ -795,16 +796,6 @@ function buildTimeline(p) {
   style.textContent = `#${p}-timeline .tl-item + .tl-item::before { background: ${acc}; }`;
   wrap.appendChild(style);
 }
-
-// ─── Mode de génération (vierge) ──────────────────────────────────────────────
-document.querySelectorAll('[data-mode]').forEach(card => {
-  card.addEventListener('click', () => {
-    document.querySelectorAll('[data-mode]').forEach(c => c.classList.remove('on'));
-    card.classList.add('on');
-    S.v.mode = card.dataset.mode;
-    refresh();
-  });
-});
 
 // ─── Format de sortie (vierge) ────────────────────────────────────────────────
 document.querySelectorAll('[data-fmt]').forEach(card => {
@@ -1117,7 +1108,6 @@ document.getElementById('v-btn').addEventListener('click', async () => {
                 `📅 ${d.nb_mois} mois`,
                 `📆 ${d.nb_jours} jours ouvrés`,
                 d.format === 'excel' ? '📊 Excel multi-feuilles' : '🗜️ ZIP',
-                ps.mode === 'hide' ? '👁️ Mode masquage' : '✂️ Mode suppression',
                 `⏱ ${elapsed_v.toFixed(1)}s`,
               ],
             });

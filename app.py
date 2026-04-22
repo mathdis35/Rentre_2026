@@ -1081,10 +1081,10 @@ def _supprimer_lignes_masquees_xml(xlsx_path):
 
 def generer_template_mois(template_path, output_path, annee, mois):
     """Génère un template vierge pour un mois donné dans output_path."""
-    shutil.copy(template_path, output_path)
-    wb = load_workbook(output_path)
+    import base64 as _b64, io as _io
+    wb = load_workbook(_io.BytesIO(_b64.b64decode(_TEMPLATE_VIERGE_B64)))
     ws = wb.active
-    nb = generate_month_sheet_delete(ws, annee, mois)
+    nb = _appliquer_mois_sur_feuille(ws, annee, mois)
     wb.save(output_path)
     return nb
 
@@ -1096,7 +1096,8 @@ def _copier_feuille(ws_src, ws_dst):
     Recrée les styles via leurs constructeurs pour éviter copy.copy() cassé sur Python 3.14+.
     """
     from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
-    for row in ws_src.iter_rows():
+    max_row = ws_src.max_row
+    for row in ws_src.iter_rows(max_row=max_row):
         for cell in row:
             nc = ws_dst.cell(row=cell.row, column=cell.column)
             nc.value = cell.value
@@ -1129,13 +1130,13 @@ def _copier_feuille(ws_src, ws_dst):
     for col, cd in ws_src.column_dimensions.items():
         ws_dst.column_dimensions[col].width = cd.width
     for r, rd in ws_src.row_dimensions.items():
-        if rd.height:
+        if rd.height and r <= max_row:
             ws_dst.row_dimensions[r].height = rd.height
-    # Bypass merge_cells() qui fait une vérification __contains__ O(n²) très lente
-    # On ajoute les fusions directement dans la collection interne
     from openpyxl.worksheet.cell_range import CellRange
     seen = set()
     for mg in ws_src.merged_cells.ranges:
+        if mg.min_row > max_row or mg.max_row > max_row:
+            continue
         k = str(mg)
         if k not in seen:
             seen.add(k)
@@ -1173,38 +1174,38 @@ def generer_excel_multifeuilles(template_path, mois_liste, output_path):
 # ─── Fusion de fichiers Excel ─────────────────────────────────────────────────
 def _copier_feuille(ws_src, ws_dst):
     """
-    Copie rapide pour la fusion — sans copy.copy() (instable selon version openpyxl).
-    Stratégie par priorité décroissante :
-      - cellule avec valeur  → styles complets (font + fill + alignment + number_format)
-      - cellule vide colorée → fill seul (préserve le code couleur des jours de cours)
-      - cellule vide non colorée → ignorée (bordures seules, sans intérêt pour la fusion)
+    Copie complète d'une feuille vers une autre (workbooks différents).
+    Copie valeurs, styles complets (font, fill, border, alignment) et dimensions.
     """
     from openpyxl.worksheet.cell_range import CellRange
-    from openpyxl.styles import Font, PatternFill, Alignment
-    MAX_COL = 130  # colonne DZ
-    NO_FILL = {'none', None, ''}
+    from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+    MAX_COL = 130
+    max_row = ws_src.max_row
 
     for (row, col), cell in ws_src._cells.items():
-        if col > MAX_COL:
+        if col > MAX_COL or row > max_row:
             continue
-        has_value = cell.value is not None
-        fi = cell.fill if cell.has_style else None
-        has_color = fi and fi.fill_type not in NO_FILL
-
-        if not has_value and not has_color:
-            continue  # bordure seule : on saute
+        if not cell.has_style and cell.value is None:
+            continue
 
         nc = ws_dst.cell(row=row, column=col, value=cell.value)
 
-        if has_color or (has_value and fi):
-            nc.fill = PatternFill(fill_type=fi.fill_type,
-                                  fgColor=copy.copy(fi.fgColor),
-                                  bgColor=copy.copy(fi.bgColor))
-        if has_value and cell.has_style:
+        if cell.has_style:
             f = cell.font
             nc.font = Font(name=f.name, size=f.size, bold=f.bold, italic=f.italic,
                            underline=f.underline, color=copy.copy(f.color),
                            strike=f.strike, vertAlign=f.vertAlign)
+            fi = cell.fill
+            nc.fill = PatternFill(fill_type=fi.fill_type,
+                                  fgColor=copy.copy(fi.fgColor),
+                                  bgColor=copy.copy(fi.bgColor))
+            b = cell.border
+            nc.border = Border(
+                left=Side(border_style=b.left.border_style, color=copy.copy(b.left.color)),
+                right=Side(border_style=b.right.border_style, color=copy.copy(b.right.color)),
+                top=Side(border_style=b.top.border_style, color=copy.copy(b.top.color)),
+                bottom=Side(border_style=b.bottom.border_style, color=copy.copy(b.bottom.color)),
+            )
             a = cell.alignment
             nc.alignment = Alignment(horizontal=a.horizontal, vertical=a.vertical,
                                      wrap_text=a.wrap_text, indent=a.indent)
@@ -1213,10 +1214,12 @@ def _copier_feuille(ws_src, ws_dst):
     for col, cd in ws_src.column_dimensions.items():
         ws_dst.column_dimensions[col].width = cd.width
     for r, rd in ws_src.row_dimensions.items():
-        if rd.height is not None:
+        if rd.height is not None and r <= max_row:
             ws_dst.row_dimensions[r].height = rd.height
     seen = set()
     for mg in ws_src.merged_cells.ranges:
+        if mg.min_row > max_row or mg.max_row > max_row:
+            continue
         k = str(mg)
         if k not in seen:
             seen.add(k)
@@ -1592,15 +1595,26 @@ def _appliquer_mois_sur_feuille(ws, annee, mois):
         if mg.min_row > closing_row or mg.max_row > closing_row:
             ws.merged_cells.ranges.discard(mg)
 
-    # Restaurer le style de la closing row (h=6.6, border_top=medium, fill=FFC0C0C0)
+    # Restaurer le style de la closing row depuis le template (colonne par colonne)
+    import base64 as _b64, io as _io
     from openpyxl.styles import Border, Side, PatternFill
-    ws.row_dimensions[closing_row].height = 6.6
-    _closing_fill   = PatternFill(fill_type='solid', fgColor='FFC0C0C0', bgColor='FFC0C0C0')
-    _closing_border = Border(top=Side(border_style='medium', color='FF000000'))
-    for c in range(1, ws.max_column + 1):
-        dst_cell = ws.cell(closing_row, c)
-        dst_cell.fill   = _closing_fill
-        dst_cell.border = _closing_border
+    _tpl_ws = openpyxl.load_workbook(_io.BytesIO(_b64.b64decode(_TEMPLATE_VIERGE_B64))).active
+    ws.row_dimensions[closing_row].height = _tpl_ws.row_dimensions[TEMPLATE_LAST_ROW].height
+    for c in range(1, _tpl_ws.max_column + 1):
+        src = _tpl_ws.cell(TEMPLATE_LAST_ROW, c)
+        dst = ws.cell(closing_row, c)
+        if src.has_style:
+            b = src.border
+            dst.border = Border(
+                left=Side(border_style=b.left.border_style, color=copy.copy(b.left.color)),
+                right=Side(border_style=b.right.border_style, color=copy.copy(b.right.color)),
+                top=Side(border_style=b.top.border_style, color=copy.copy(b.top.color)),
+                bottom=Side(border_style=b.bottom.border_style, color=copy.copy(b.bottom.color)),
+            )
+            fi = src.fill
+            dst.fill = PatternFill(fill_type=fi.fill_type,
+                                   fgColor=copy.copy(fi.fgColor),
+                                   bgColor=copy.copy(fi.bgColor))
 
     return len(jours_ouvres)
 

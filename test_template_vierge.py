@@ -167,12 +167,13 @@ def test_closing_row(annee, mois, ws, nb):
 
 
 def test_pas_de_double_closing(annee, mois, ws, nb):
-    """L'avant-dernière ligne ne doit pas avoir le fill FFC0C0C0 (closing réservé à max_row)."""
+    """Seule max_row doit avoir fill=FFC0C0C0 — ni max_row-1 ni max_row+1."""
     last_row = ws.max_row
-    prev = ws.cell(last_row - 1, 2)
-    prev_fc = prev.fill.fgColor.rgb if prev.fill and prev.fill.fgColor else None
-    assert prev_fc != 'FFC0C0C0', \
-        f"double closing : row {last_row-1} a aussi fill=FFC0C0C0"
+    for r in [last_row - 1, last_row + 1]:
+        cell = ws.cell(r, 2)
+        fc = cell.fill.fgColor.rgb if cell.fill and cell.fill.fgColor else None
+        assert fc != 'FFC0C0C0', \
+            f"double closing : row {r} a aussi fill=FFC0C0C0 (closing={last_row})"
 
 
 def test_premier_jour_row7(annee, mois, ws, nb):

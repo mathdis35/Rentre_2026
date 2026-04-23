@@ -1594,9 +1594,17 @@ def _appliquer_mois_sur_feuille(ws, annee, mois):
         delete_from = first_empty_template_row - lignes_debut_total - sep
         ws.delete_rows(delete_from, 9999)
 
-    # closing_row = dernière ligne du dernier slot utilisé + 7 (6 lignes slot + 1 fermeture)
+    # closing_row = dernière ligne du dernier slot utilisé + 6
     last_used_slot_row = jours_pos[len(jours_ouvres) - 1][0]  # rl du dernier jour
-    closing_row = last_used_slot_row + 7
+    closing_row = last_used_slot_row + 6
+
+    # Si closing_row-1 est un séparateur inter-semaine résiduel (h=6.6, fill=FFC0C0C0),
+    # c'est que le dernier jour est un vendredi et le séparateur n'a pas été supprimé.
+    # On recule closing_row d'une ligne et on purgera l'ancienne.
+    prev_cell = ws.cell(closing_row - 1, 2)
+    prev_fc = str(prev_cell.fill.fgColor.rgb) if prev_cell.has_style and prev_cell.fill else None
+    if prev_fc == 'FFC0C0C0':
+        closing_row -= 1
 
     # Purger _cells, row_dimensions et merged_cells au-delà de closing_row
     for key in [k for k in ws._cells if k[0] > closing_row]:

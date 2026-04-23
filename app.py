@@ -1589,15 +1589,17 @@ def _appliquer_mois_sur_feuille(ws, annee, mois):
         gap = first_empty_template_row - last_used_template_row
         sep = gap - 6  # 0 si même semaine, 1 si semaine différente (séparateur)
         delete_from = first_empty_template_row - lignes_debut_total - sep
-        ws.delete_rows(delete_from, ws.max_row - delete_from + 1)
+        ws.delete_rows(delete_from, 9999)
 
-    # closing_row = dernière ligne restante après toutes les suppressions
-    closing_row = ws.max_row
+    # closing_row = dernière ligne du dernier slot utilisé + 1 ligne de fermeture
+    last_used_slot_row = jours_pos[len(jours_ouvres) - 1][0]  # rl du dernier jour
+    closing_row = last_used_slot_row + 6  # 6 lignes de slot + 1 = fermeture
 
-    # Nettoyer row_dimensions et merge ranges fantômes
-    for phantom_r in list(ws.row_dimensions.keys()):
-        if phantom_r > closing_row:
-            del ws.row_dimensions[phantom_r]
+    # Purger _cells, row_dimensions et merged_cells au-delà de closing_row
+    for key in [k for k in ws._cells if k[0] > closing_row]:
+        del ws._cells[key]
+    for phantom_r in [r for r in ws.row_dimensions if r > closing_row]:
+        del ws.row_dimensions[phantom_r]
     for mg in list(ws.merged_cells.ranges):
         if mg.min_row > closing_row or mg.max_row > closing_row:
             ws.merged_cells.ranges.discard(mg)

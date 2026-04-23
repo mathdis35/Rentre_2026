@@ -170,8 +170,8 @@ def test_pas_de_double_closing(annee, mois, ws, nb):
     """Seule max_row doit avoir fill=FFC0C0C0 — ni max_row-1 ni max_row+1."""
     last_row = ws.max_row
     for r in [last_row - 1, last_row + 1]:
-        cell = ws.cell(r, 2)
-        fc = cell.fill.fgColor.rgb if cell.fill and cell.fill.fgColor else None
+        cell = ws._cells.get((r, 2))  # ne pas créer la cellule via ws.cell()
+        fc = cell.fill.fgColor.rgb if cell and cell.fill and cell.fill.fgColor else None
         assert fc != 'FFC0C0C0', \
             f"double closing : row {r} a aussi fill=FFC0C0C0 (closing={last_row})"
 
@@ -229,7 +229,8 @@ def test_pas_de_lignes_fantomes(annee, mois, ws, nb):
     rd = ws.row_dimensions
     for r in range(last_row + 1, last_row + 10):
         h_after = rd[r].height if r in rd else None
-        v_after = ws.cell(r, 2).value
+        cell = ws._cells.get((r, 2))  # ne pas créer la cellule via ws.cell()
+        v_after = cell.value if cell else None
         assert h_after is None and v_after is None, \
             f"ligne fantome en row {r} (h={h_after}, val={v_after!r})"
 
@@ -348,6 +349,20 @@ def test_separateurs_semaine(annee, mois, ws, nb):
                 f"separateur manquant apres Vendredi row {row_l} : " \
                 f"slot suivant en row {next_slot_row} (attendu {sep_row + 1})"
 
+def test_dernier_slot_6_lignes(annee, mois, ws, nb):
+    """Le dernier slot utilisé doit occuper exactement 6 lignes (pas 7)."""
+    labels = labels_dans_ws(ws)
+    if not labels:
+        return
+    last_label_row = labels[-1][0]  # row du label du dernier jour
+    last_row = ws.max_row           # closing row
+    # Entre le label du dernier jour et la closing row : exactement 6 lignes
+    # (label + num + 4 lignes vides = 6 lignes de slot, puis closing)
+    nb_lignes_slot = last_row - last_label_row
+    assert nb_lignes_slot == 6, \
+        f"dernier slot a {nb_lignes_slot} lignes (attendu 6) : label en row {last_label_row}, closing en row {last_row}"
+
+
 def test_pas_de_lignes_apres_closing(annee, mois, ws, nb):
     """
     Aucune cellule avec style visible (fill coloré ou border) ne doit exister
@@ -389,6 +404,7 @@ TOUS_LES_TESTS = [
     test_hauteurs_slots,
     test_merges_preserves,
     test_separateurs_semaine,
+    test_dernier_slot_6_lignes,
     test_pas_de_lignes_apres_closing,
 ]
 

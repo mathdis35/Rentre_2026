@@ -1598,14 +1598,6 @@ def _appliquer_mois_sur_feuille(ws, annee, mois):
     last_used_slot_row = jours_pos[len(jours_ouvres) - 1][0]  # rl du dernier jour
     closing_row = last_used_slot_row + 6
 
-    # Si closing_row-1 est un séparateur inter-semaine résiduel (h=6.6, fill=FFC0C0C0),
-    # c'est que le dernier jour est un vendredi et le séparateur n'a pas été supprimé.
-    # On recule closing_row d'une ligne et on purgera l'ancienne.
-    prev_cell = ws.cell(closing_row - 1, 2)
-    prev_fc = str(prev_cell.fill.fgColor.rgb) if prev_cell.has_style and prev_cell.fill else None
-    if prev_fc == 'FFC0C0C0':
-        closing_row -= 1
-
     # Purger _cells, row_dimensions et merged_cells au-delà de closing_row
     for key in [k for k in ws._cells if k[0] > closing_row]:
         del ws._cells[key]
@@ -1614,6 +1606,17 @@ def _appliquer_mois_sur_feuille(ws, annee, mois):
     for mg in list(ws.merged_cells.ranges):
         if mg.min_row > closing_row or mg.max_row > closing_row:
             ws.merged_cells.ranges.discard(mg)
+
+    # Si closing_row-1 est un séparateur inter-semaine résiduel (fill=FFC0C0C0),
+    # effacer son fill pour éviter le double closing visuel (cas mois finissant un vendredi)
+    from openpyxl.styles import PatternFill as _PF
+    _no_fill = _PF(fill_type=None)
+    for col in range(1, ws.max_column + 1):
+        sep_cell = ws._cells.get((closing_row - 1, col))
+        if sep_cell and sep_cell.has_style and sep_cell.fill:
+            fc = str(sep_cell.fill.fgColor.rgb) if sep_cell.fill.fgColor else None
+            if fc == 'FFC0C0C0':
+                sep_cell.fill = _no_fill
 
 
     # Restaurer le style de la closing row depuis le template (colonne par colonne)

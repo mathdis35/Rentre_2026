@@ -1607,18 +1607,26 @@ def _appliquer_mois_sur_feuille(ws, annee, mois):
     from openpyxl.styles import Border, Side, PatternFill
     _tpl_ws = load_workbook(_io.BytesIO(_b64.b64decode(_TEMPLATE_VIERGE_B64))).active
     ws.row_dimensions[closing_row].height = _tpl_ws.row_dimensions[TEMPLATE_LAST_ROW].height
+    _TRANSPARENT = {'00000000', '000000', None}
     for c in range(1, _tpl_ws.max_column + 1):
         src = _tpl_ws.cell(TEMPLATE_LAST_ROW, c)
+        if not src.has_style:
+            continue
+        fi = src.fill
+        b  = src.border
+        has_real_fill   = fi.fill_type not in (None, 'none') and str(fi.fgColor.rgb) not in _TRANSPARENT
+        has_real_border = any(getattr(b, s).border_style for s in ('left','right','top','bottom'))
+        if not has_real_fill and not has_real_border:
+            continue
         dst = ws.cell(closing_row, c)
-        if src.has_style:
-            b = src.border
+        if has_real_border:
             dst.border = Border(
                 left=Side(border_style=b.left.border_style, color=copy.copy(b.left.color)),
                 right=Side(border_style=b.right.border_style, color=copy.copy(b.right.color)),
                 top=Side(border_style=b.top.border_style, color=copy.copy(b.top.color)),
                 bottom=Side(border_style=b.bottom.border_style, color=copy.copy(b.bottom.color)),
             )
-            fi = src.fill
+        if has_real_fill:
             dst.fill = PatternFill(fill_type=fi.fill_type,
                                    fgColor=copy.copy(fi.fgColor),
                                    bgColor=copy.copy(fi.bgColor))

@@ -53,8 +53,10 @@ from openpyxl.worksheet.cell_range import CellRange
 with open('app.py', 'r', encoding='utf-8') as f:
     src = f.read()
 
+from openpyxl import load_workbook, Workbook
 g = {
-    'openpyxl': openpyxl, 'calendar': calendar, 'datetime': datetime,
+    'openpyxl': openpyxl, 'load_workbook': load_workbook, 'Workbook': Workbook,
+    'calendar': calendar, 'datetime': datetime,
     'base64': base64, 'io': io, 'copy': copy, 're': re, 'os': os,
     'get_column_letter': get_column_letter,
     'Border': Border, 'Side': Side, 'PatternFill': PatternFill,
@@ -165,12 +167,12 @@ def test_closing_row(annee, mois, ws, nb):
 
 
 def test_pas_de_double_closing(annee, mois, ws, nb):
-    """L'avant-dernière ligne ne doit pas avoir border_top=medium."""
+    """L'avant-dernière ligne ne doit pas avoir le fill FFC0C0C0 (closing réservé à max_row)."""
     last_row = ws.max_row
     prev = ws.cell(last_row - 1, 2)
-    prev_bt = prev.border.top.border_style if prev.border else None
-    assert prev_bt != 'medium', \
-        f"double closing : row {last_row-1} a aussi border_top=medium"
+    prev_fc = prev.fill.fgColor.rgb if prev.fill and prev.fill.fgColor else None
+    assert prev_fc != 'FFC0C0C0', \
+        f"double closing : row {last_row-1} a aussi fill=FFC0C0C0"
 
 
 def test_premier_jour_row7(annee, mois, ws, nb):
@@ -345,6 +347,26 @@ def test_separateurs_semaine(annee, mois, ws, nb):
                 f"separateur manquant apres Vendredi row {row_l} : " \
                 f"slot suivant en row {next_slot_row} (attendu {sep_row + 1})"
 
+def test_pas_de_lignes_apres_closing(annee, mois, ws, nb):
+    """
+    Aucune cellule avec style visible (fill coloré ou border) ne doit exister
+    au-delà de la closing row. Détecte les lignes fantômes résiduelles.
+    """
+    last_row = ws.max_row
+    TRANSPARENT = {'00000000', '000000', 'FF000000', None}
+    for (r, c), cell in ws._cells.items():
+        if r <= last_row:
+            continue
+        if not cell.has_style:
+            continue
+        fi = cell.fill
+        b  = cell.border
+        has_fill   = fi and fi.fill_type not in (None, 'none') and str(fi.fgColor.rgb) not in TRANSPARENT
+        has_border = b and any(getattr(b, s).border_style for s in ('left','right','top','bottom'))
+        assert not has_fill and not has_border, \
+            f"cellule fantome avec style en row {r} col {c} (closing={last_row}) : fill={fi.fgColor.rgb if fi else None} border={b}"
+
+
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
@@ -366,6 +388,7 @@ TOUS_LES_TESTS = [
     test_hauteurs_slots,
     test_merges_preserves,
     test_separateurs_semaine,
+    test_pas_de_lignes_apres_closing,
 ]
 
 

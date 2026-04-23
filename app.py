@@ -1217,8 +1217,11 @@ def _copier_feuille(ws_src, ws_dst):
     for col, cd in ws_src.column_dimensions.items():
         ws_dst.column_dimensions[col].width = cd.width
     for r, rd in ws_src.row_dimensions.items():
-        if rd.height is not None and r <= max_row:
-            ws_dst.row_dimensions[r].height = rd.height
+        if r <= max_row:
+            if rd.height is not None:
+                ws_dst.row_dimensions[r].height = rd.height
+            if rd.hidden:
+                ws_dst.row_dimensions[r].hidden = True
     seen = set()
     for mg in ws_src.merged_cells.ranges:
         if mg.min_row > max_row or mg.max_row > max_row:
@@ -1591,9 +1594,9 @@ def _appliquer_mois_sur_feuille(ws, annee, mois):
         delete_from = first_empty_template_row - lignes_debut_total - sep
         ws.delete_rows(delete_from, 9999)
 
-    # closing_row = dernière ligne du dernier slot utilisé + 1 ligne de fermeture
+    # closing_row = dernière ligne du dernier slot utilisé + 7 (6 lignes slot + 1 fermeture)
     last_used_slot_row = jours_pos[len(jours_ouvres) - 1][0]  # rl du dernier jour
-    closing_row = last_used_slot_row + 6  # 6 lignes de slot + 1 = fermeture
+    closing_row = last_used_slot_row + 7
 
     # Purger _cells, row_dimensions et merged_cells au-delà de closing_row
     for key in [k for k in ws._cells if k[0] > closing_row]:
@@ -1603,6 +1606,7 @@ def _appliquer_mois_sur_feuille(ws, annee, mois):
     for mg in list(ws.merged_cells.ranges):
         if mg.min_row > closing_row or mg.max_row > closing_row:
             ws.merged_cells.ranges.discard(mg)
+
 
     # Restaurer le style de la closing row depuis le template (colonne par colonne)
     import base64 as _b64, io as _io

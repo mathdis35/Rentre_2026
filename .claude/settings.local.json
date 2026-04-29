@@ -1,0 +1,50 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(python -X utf8 -c ' *)",
+      "Bash(pkill -f \"flask run\")",
+      "Bash(pkill -f \"gunicorn\")",
+      "Bash(FLASK_APP=app.py flask run --reload)",
+      "Bash(curl -s http://127.0.0.1:5000/version)",
+      "Bash(python -c ' *)",
+      "Bash(pkill -f \"app.py\")",
+      "Bash(python -m flask run --port 5000)",
+      "Bash(pkill -f \"flask\\\\|gunicorn\\\\|app.py\")",
+      "Bash(taskkill /F /IM python.exe)",
+      "Bash(python app.py)",
+      "Bash(curl -s http://localhost:5000/ping)",
+      "Bash(taskkill /F /PID 46912 /PID 45192 /PID 2756)",
+      "Bash(taskkill /F /PID 46912)",
+      "Bash(taskkill /F /PID 45192)",
+      "Bash(taskkill /F /PID 2756)",
+      "PowerShell(Stop-Process -Id 46912 -Force)",
+      "PowerShell(Stop-Process -Id 45192 -Force)",
+      "PowerShell(Stop-Process -Id 2756 -Force)",
+      "PowerShell(netstat -ano)",
+      "PowerShell(Stop-Process -Id 46912 -Force -ErrorAction SilentlyContinue)",
+      "Bash(FLASK_APP=app.py flask run --port 5001)",
+      "Bash(curl -s http://localhost:5001/ping)",
+      "Bash(read pid *)",
+      "Bash(powershell.exe -Command 'Get-Process -Id __TRACKED_VAR__ -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,StartTime' done)",
+      "Bash(curl -s -X POST http://localhost:5000/generer-template-vierge -F 'mois_json=[[2026,11]]' -o /tmp/test_nov.xlsx)",
+      "Bash(curl -s -X POST http://localhost:5000/generer-template-vierge -F 'mois_json=[[2026,11]]' -o c:/tmp/test_nov.xlsx)",
+      "PowerShell(Stop-Process -Id 21024 -Force)",
+      "PowerShell(Stop-Process -Id 21024 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Process | Where-Object {$_.Id -eq 21024})",
+      "Bash(curl -s -X POST http://localhost:5000/generer-template-vierge -F 'mois_json=[[2026,11]]' -o C:/Users/Matheo.DISTINGUIN/Desktop/test_nov.xlsx -w '%{http_code}')",
+      "Bash(curl -s -X POST http://localhost:5000/generer-template-vierge -F 'mois_json=[[2026,11]]')",
+      "Bash(curl -s http://localhost:5000/statut/73f4493b-f84)",
+      "Bash(curl -s http://localhost:5000/status/73f4493b-f84)",
+      "Bash(curl -s \"http://localhost:5000/job/73f4493b-f84\")",
+      "Bash(curl -s http://localhost:5000/telecharger/2d66c52c/NOVEMBRE_2026.xlsx -o C:/Users/Matheo.DISTINGUIN/Desktop/test_nov.xlsx -w '%{http_code}')",
+      "Bash(tasklist)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:5000/)"
+    ],
+    "additionalDirectories": [
+      "\\tmp"
+    ]
+  }
+}

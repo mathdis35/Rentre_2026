@@ -41,7 +41,10 @@
       "Bash(curl -s \"http://localhost:5000/job/73f4493b-f84\")",
       "Bash(curl -s http://localhost:5000/telecharger/2d66c52c/NOVEMBRE_2026.xlsx -o C:/Users/Matheo.DISTINGUIN/Desktop/test_nov.xlsx -w '%{http_code}')",
       "Bash(tasklist)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:5000/)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:5000/)",
+      "Bash(git fetch *)",
+      "Bash(git commit *)",
+      "Bash(git merge *)"
     ],
     "additionalDirectories": [
       "\\tmp"

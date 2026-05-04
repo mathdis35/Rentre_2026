@@ -551,22 +551,27 @@ def ecrire_planning(template_path, assignment, mois_cibles, output_path):
         for ds, ri in dr.items():
             if ds not in assignment: continue
             for cn, ci in cc.items():
-                for k, v in assignment[ds].items():
+                for k, slots in assignment[ds].items():
                     if noms_similaires(k, cn):
-                        if v['formateur'] == '⚠️':
-                            cell = ws.cell(row=ri, column=ci)
-                            cell.value = '⚠️'
-                        else:
-                            # Prénom sur ri+1, matière sur ri+2
+                        # slots = {'matin1': {'formateur':..,'matiere':..}, ...}
+                        # Prendre le premier formateur réel (non ⚠️ non ?)
+                        formateur, matiere = None, None
+                        all_warn = True
+                        for sv in slots.values():
+                            if sv.get('formateur') not in ('⚠️', '?', None):
+                                formateur = sv['formateur']; matiere = sv.get('matiere', ''); all_warn = False; break
+                            if sv.get('formateur') != '⚠️': all_warn = False
+                        if formateur:
                             c1 = ws.cell(row=ri + 1, column=ci)
                             c2 = ws.cell(row=ri + 2, column=ci)
-                            c1.value = v['formateur']
-                            c2.value = v['matiere']
+                            c1.value = formateur; c2.value = matiere
                             for c in (c1, c2):
                                 old = c.font
                                 c.font = Font(name=old.name or 'Calibri', size=old.size or 9,
                                               bold=(c is c1), color=old.color)
                                 c.alignment = Alignment(horizontal='center', vertical='center')
+                        elif all_warn:
+                            ws.cell(row=ri, column=ci).value = '⚠️'
                         break
     wb.save(output_path)
 

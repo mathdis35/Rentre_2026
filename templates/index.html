@@ -345,7 +345,7 @@
 
     <div class="info-banner" style="background:#EFF4FF;border:1px solid #B8CFEE;color:#0f2d52">
       <strong>Planning formateurs</strong> — Uploadez une fois le <strong>tableau formateurs</strong> (CLASSE / FORMATEUR / MATIÈRE / HEURES) — il sera mémorisé.
-      Ajoutez ensuite les <strong>disponibilités</strong> et le <strong>planning colorié</strong> des classes pour générer l'assignation automatique.
+      Ajoutez ensuite les <strong>disponibilités formateurs</strong> et le <strong>template colorié</strong> (multi-feuilles avec les jours colorés) pour générer l'assignation automatique.
     </div>
 
     <div class="g2w">
@@ -354,7 +354,7 @@
         <div class="card" style="padding:17px">
           <div class="stitle" style="color:#1A4A7A">Fichiers nécessaires</div>
 
-          <!-- Template mémorisé (formateurs) -->
+          <!-- Tableau formateurs mémorisé -->
           <div id="f-stored" class="stored-ok" style="display:none;margin-bottom:12px;background:#EFF4FF;border:1px solid #B8CFEE;color:#1A4A7A">
             <span style="font-size:16px">✅</span>
             <div class="stored-info">
@@ -367,9 +367,9 @@
           <div id="f-upload" style="margin-bottom:12px">
             <div class="drop-zone" id="f-tpl-drop" style="--accent:#1A4A7A;--accent-bg:#EFF4FF">
               <input type="file" id="f-tpl-file" accept=".xlsx" style="z-index:2"/>
-              <div class="dz-icon">📎</div>
-              <div class="dz-label">Template de référence</div>
-              <div class="dz-hint">.xlsx</div>
+              <div class="dz-icon">📊</div>
+              <div class="dz-label">Tableau formateurs</div>
+              <div class="dz-hint">CLASSE / FORMATEUR / MATIÈRE / HEURES — .xlsx</div>
             </div>
           </div>
 
@@ -384,12 +384,12 @@
             <div class="file-list" id="f-dispos-files"></div>
           </div>
 
-          <!-- Plannings classes -->
+          <!-- Template colorié -->
           <div class="drop-zone" id="f-pla-drop" style="--accent:#1A4A7A;--accent-bg:#EFF4FF">
             <input type="file" id="f-pla-file" accept=".xls,.xlsx" multiple style="z-index:2"/>
-            <div class="dz-icon">📋</div>
-            <div class="dz-label" id="f-pla-lbl">Plannings des classes</div>
-            <div class="dz-hint">.xls / .xlsx — plusieurs fichiers OK</div>
+            <div class="dz-icon">🗓</div>
+            <div class="dz-label" id="f-pla-lbl">Template colorié</div>
+            <div class="dz-hint">Fichier multi-feuilles avec les jours colorés par classe — .xlsx</div>
           </div>
           <div class="file-list" id="f-files"></div>
         </div>
@@ -901,10 +901,9 @@ function buildChecklist() {
     : null;
 
   const items = [
-    { label: 'Template de référence',       ok: !!S.tplFile,            val: tplVal },
+    { label: 'Tableau formateurs',           ok: !!S.tplFile,            val: tplVal },
     { label: 'Disponibilités formateurs',   ok: f.dispos.length > 0,    val: f.dispos.length > 0 ? `${f.dispos.length} fichier${f.dispos.length>1?'s':''}` : null },
-    { label: 'Tableau formateurs (template)', ok: !!S.tplFile,           val: S.tplName },
-    { label: 'Plannings classes',            ok: f.plannings.length > 0, val: f.plannings.length > 0 ? `${f.plannings.length} fichier${f.plannings.length>1?'s':''}` : null },
+    { label: 'Template colorié',            ok: f.plannings.length > 0, val: f.plannings.length > 0 ? `${f.plannings.length} fichier${f.plannings.length>1?'s':''}` : null },
     { label: 'Mois sélectionnés',            ok: f.sel.size > 0,         val: f.sel.size > 0 ? `${f.sel.size} mois` : null },
   ];
 

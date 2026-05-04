@@ -149,31 +149,46 @@ def nums_dans_ws(ws):
             result.append((r, v))
     return result
 
+def closing_row_ws(ws):
+    """Closing row = première ligne avec border_top=medium ET border_bottom=medium après le dernier num."""
+    last_num_row = None
+    for r in range(6, ws.max_row + 1):
+        for col in JOURS_COLS:
+            if isinstance(ws.cell(r, col).value, int):
+                last_num_row = r
+                break
+    if last_num_row is None:
+        return ws.max_row
+    # Chercher le prochain séparateur après le dernier num (jusqu'à +25 lignes)
+    for r in range(last_num_row + 1, last_num_row + 25):
+        cell = ws._cells.get((r, 2))
+        b = cell.border if cell and cell.has_style else None
+        if b and b.top.border_style == 'medium' and b.bottom.border_style == 'medium':
+            return r
+    return last_num_row + 3
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
 def test_closing_row(annee, mois, ws, nb):
-    """Dernière ligne : h~6.6, border_top=medium, fill=FFC0C0C0."""
-    last_row = ws.max_row
-    rd = ws.row_dimensions
-    h  = rd[last_row].height if last_row in rd else None
+    """Closing row : h≈7.2, border_top=medium ET border_bottom=medium."""
+    last_row = closing_row_ws(ws)
     c2 = ws.cell(last_row, 2)
     bt = c2.border.top.border_style if c2.border else None
-    fc = c2.fill.fgColor.rgb if c2.fill and c2.fill.fgColor else None
-    assert h is not None and abs(h - 6.6) < 0.5, f"h={h} (attendu ~6.6)"
-    assert bt == 'medium', f"border_top={bt!r} (attendu 'medium')"
-    assert fc == 'FFC0C0C0', f"fill={fc!r} (attendu 'FFC0C0C0')"
+    bb = c2.border.bottom.border_style if c2.border else None
+    assert bt == 'medium', f"border_top={bt!r} (attendu 'medium') en row {last_row}"
+    assert bb == 'medium', f"border_bottom={bb!r} (attendu 'medium') en row {last_row}"
 
 
 def test_pas_de_double_closing(annee, mois, ws, nb):
-    """Seule max_row doit avoir fill=FFC0C0C0 — ni max_row-1 ni max_row+1."""
-    last_row = ws.max_row
+    """Seule la closing row doit avoir border_top=medium — pas les lignes adjacentes."""
+    last_row = closing_row_ws(ws)
     for r in [last_row - 1, last_row + 1]:
-        cell = ws._cells.get((r, 2))  # ne pas créer la cellule via ws.cell()
-        fc = cell.fill.fgColor.rgb if cell and cell.fill and cell.fill.fgColor else None
-        assert fc != 'FFC0C0C0', \
-            f"double closing : row {r} a aussi fill=FFC0C0C0 (closing={last_row})"
+        cell = ws._cells.get((r, 2))
+        bt = cell.border.top.border_style if cell and cell.border else None
+        assert bt != 'medium', \
+            f"double closing : row {r} a aussi border_top=medium (closing={last_row})"
 
 
 def test_premier_jour_row7(annee, mois, ws, nb):
@@ -307,11 +322,12 @@ def test_pas_de_date_residuelle(annee, mois, ws, nb):
 
 
 def test_hauteurs_slots(annee, mois, ws, nb):
-    """Les lignes des slots actifs ont une hauteur entre 5 et 30 pt."""
+    """Les 4 lignes de chaque slot actif ont une hauteur entre 5 et 30 pt."""
     labels = labels_dans_ws(ws)
     rd = ws.row_dimensions
     for row_l, label in labels:
-        for r in range(row_l, row_l + 6):
+        # slot = [row_l-1 (séparateur), row_l (label), row_l+1 (num), row_l+2 (contenu)]
+        for r in range(row_l - 1, row_l + 3):
             h = rd[r].height if r in rd else None
             if h is not None:
                 assert 5 <= h <= 30, \
@@ -335,32 +351,33 @@ def test_separateurs_semaine(annee, mois, ws, nb):
     """
     Les séparateurs inter-semaines (ligne grise entre vendredi et lundi suivant)
     doivent être présents entre chaque groupe de 5 jours consécutifs.
-    Un séparateur = 1 ligne avec border_top=medium après le slot vendredi.
+    Nouvelle structure : slot = 4 lignes (sep + label + num + contenu).
+    Le séparateur de semaine = 1 ligne après la 4e ligne du slot vendredi.
     """
     labels = labels_dans_ws(ws)
-    # Trouver les positions des vendredis (dernier jour de chaque semaine)
     for idx, (row_l, label) in enumerate(labels):
         if label == 'Vendredi' and idx + 1 < len(labels):
-            # La row après le slot vendredi (row_l + 6) doit être un séparateur
-            sep_row = row_l + 6
+            # slot vendredi : sep(row_l-1) label(row_l) num(row_l+1) contenu(row_l+2)
+            # séparateur de semaine : row_l+3
+            # slot lundi suivant : sep(row_l+4) label(row_l+5)
             next_slot_row = labels[idx + 1][0]
-            # Il doit y avoir exactement 1 ligne entre fin du slot vendredi et début du lundi
-            assert next_slot_row == sep_row + 1, \
+            attendu = row_l + 5
+            assert next_slot_row == attendu, \
                 f"separateur manquant apres Vendredi row {row_l} : " \
-                f"slot suivant en row {next_slot_row} (attendu {sep_row + 1})"
+                f"slot suivant en row {next_slot_row} (attendu {attendu})"
 
-def test_dernier_slot_6_lignes(annee, mois, ws, nb):
-    """Le dernier slot utilisé doit occuper exactement 6 lignes (pas 7)."""
+def test_dernier_slot_4_lignes(annee, mois, ws, nb):
+    """Le dernier slot utilisé doit occuper exactement 4 lignes avant la closing row."""
     labels = labels_dans_ws(ws)
     if not labels:
         return
     last_label_row = labels[-1][0]  # row du label du dernier jour
-    last_row = ws.max_row           # closing row
-    # Entre le label du dernier jour et la closing row : exactement 6 lignes
-    # (label + num + 4 lignes vides = 6 lignes de slot, puis closing)
+    last_row = closing_row_ws(ws)   # closing row = dernier num + 3
+    # slot = sep(row_l-1) + label(row_l) + num(row_l+1) + contenu(row_l+2)
+    # closing = row_l + 4 → nb_lignes = last_row - last_label_row = 4
     nb_lignes_slot = last_row - last_label_row
-    assert nb_lignes_slot == 6, \
-        f"dernier slot a {nb_lignes_slot} lignes (attendu 6) : label en row {last_label_row}, closing en row {last_row}"
+    assert nb_lignes_slot == 3, \
+        f"dernier slot a {nb_lignes_slot} lignes apres label (attendu 3) : label en row {last_label_row}, closing en row {last_row}"
 
 
 def test_pas_de_lignes_apres_closing(annee, mois, ws, nb):
@@ -368,7 +385,7 @@ def test_pas_de_lignes_apres_closing(annee, mois, ws, nb):
     Aucune cellule avec style visible (fill coloré ou border) ne doit exister
     au-delà de la closing row. Détecte les lignes fantômes résiduelles.
     """
-    last_row = ws.max_row
+    last_row = closing_row_ws(ws)
     TRANSPARENT = {'00000000', '000000', 'FF000000', None}
     for (r, c), cell in ws._cells.items():
         if r <= last_row:
@@ -404,7 +421,7 @@ TOUS_LES_TESTS = [
     test_hauteurs_slots,
     test_merges_preserves,
     test_separateurs_semaine,
-    test_dernier_slot_6_lignes,
+    test_dernier_slot_4_lignes,
     test_pas_de_lignes_apres_closing,
 ]
 
@@ -486,20 +503,27 @@ def _make_planning_wb(jours_bleus):
 
 
 def _make_dispo_wb(nom_formateur, disponibilites):
-    """disponibilites : liste de (annee, mois, jour, matin:bool, pm:bool)."""
+    """disponibilites : liste de (annee, mois, jour, matin1:bool, matin2:bool, pm1:bool, pm2:bool)."""
     wb = Workbook()
     ws = wb.active
-    ws.cell(1, 1).value = "Nom :"
+    ws.cell(1, 1).value = "Prénom et Nom "
     ws.cell(1, 2).value = nom_formateur
     ws.cell(3, 3).value = datetime.datetime(2026, 9, 1, 0, 0)
+    # en-têtes créneaux sur la ligne suivant la ligne mois
+    ws.cell(4, 3).value = "matin 1"
+    ws.cell(4, 4).value = "matin 2"
+    ws.cell(4, 5).value = "après midi 1"
+    ws.cell(4, 6).value = "après midi 2"
     jours_abbr = ['lun', 'mar', 'mer', 'jeu', 'ven', 'sam', 'dim']
     row = 5
-    for annee, mois, jour, matin, pm in disponibilites:
+    for annee, mois, jour, m1, m2, p1, p2 in disponibilites:
         d = datetime.date(annee, mois, jour)
         ws.cell(row, 1).value = jours_abbr[d.weekday()]
         ws.cell(row, 2).value = jour
-        ws.cell(row, 3).value = "X" if matin else None
-        ws.cell(row, 4).value = "X" if pm else None
+        ws.cell(row, 3).value = "X" if m1 else None
+        ws.cell(row, 4).value = "X" if m2 else None
+        ws.cell(row, 5).value = "X" if p1 else None
+        ws.cell(row, 6).value = "X" if p2 else None
         row += 1
     return wb
 
@@ -709,37 +733,51 @@ def _():
 
 @_p2("parse_disponibilite: nom extrait")
 def _():
-    path = _tmp_xlsx(_make_dispo_wb("Dupont Jean", [(2026, 9, 7, True, False)]))
+    path = _tmp_xlsx(_make_dispo_wb("Dupont Jean", [(2026, 9, 7, True, False, False, False)]))
     try:
         res = _app.parse_disponibilite(path)
         assert res['nom'] == "Dupont Jean", f"nom={res['nom']!r}"
     finally:
         os.unlink(path)
 
-@_p2("parse_disponibilite: dispo matin")
+@_p2("parse_disponibilite: matin1 dispo")
 def _():
-    path = _tmp_xlsx(_make_dispo_wb("Test", [(2026, 9, 7, True, False)]))
+    path = _tmp_xlsx(_make_dispo_wb("Test", [(2026, 9, 7, True, False, False, False)]))
     try:
         res = _app.parse_disponibilite(path)
         assert "2026-09-07" in res['dispo']
-        assert res['dispo']["2026-09-07"]['matin'] is True
-        assert res['dispo']["2026-09-07"]['pm'] is False
+        assert res['dispo']["2026-09-07"]['matin1'] is True
+        assert res['dispo']["2026-09-07"]['matin2'] is False
+        assert res['dispo']["2026-09-07"]['pm1'] is False
+        assert res['dispo']["2026-09-07"]['pm2'] is False
     finally:
         os.unlink(path)
 
-@_p2("parse_disponibilite: dispo pm")
+@_p2("parse_disponibilite: pm2 dispo")
 def _():
-    path = _tmp_xlsx(_make_dispo_wb("Test", [(2026, 9, 8, False, True)]))
+    path = _tmp_xlsx(_make_dispo_wb("Test", [(2026, 9, 8, False, False, False, True)]))
     try:
         res = _app.parse_disponibilite(path)
         assert "2026-09-08" in res['dispo']
-        assert res['dispo']["2026-09-08"]['pm'] is True
+        assert res['dispo']["2026-09-08"]['pm2'] is True
+        assert res['dispo']["2026-09-08"]['matin1'] is False
+    finally:
+        os.unlink(path)
+
+@_p2("parse_disponibilite: tous les créneaux cochés")
+def _():
+    path = _tmp_xlsx(_make_dispo_wb("Test", [(2026, 9, 7, True, True, True, True)]))
+    try:
+        res = _app.parse_disponibilite(path)
+        assert "2026-09-07" in res['dispo']
+        d = res['dispo']["2026-09-07"]
+        assert d['matin1'] and d['matin2'] and d['pm1'] and d['pm2']
     finally:
         os.unlink(path)
 
 @_p2("parse_disponibilite: samedi ignoré")
 def _():
-    path = _tmp_xlsx(_make_dispo_wb("Test", [(2026, 9, 5, True, True)]))
+    path = _tmp_xlsx(_make_dispo_wb("Test", [(2026, 9, 5, True, True, True, True)]))
     try:
         res = _app.parse_disponibilite(path)
         assert "2026-09-05" not in res['dispo']
@@ -748,7 +786,7 @@ def _():
 
 @_p2("parse_disponibilite: sans X → absent")
 def _():
-    path = _tmp_xlsx(_make_dispo_wb("Test", [(2026, 9, 7, False, False)]))
+    path = _tmp_xlsx(_make_dispo_wb("Test", [(2026, 9, 7, False, False, False, False)]))
     try:
         res = _app.parse_disponibilite(path)
         assert "2026-09-07" not in res['dispo']
@@ -900,74 +938,84 @@ def _aff_simple(classe, formateur, matiere="Gestion", heures=100):
                       'heures': heures, 'heures_faites': 0, 'priorite': 1}]}
 
 
-@_p2("assigner: assignation simple")
+@_p2("assigner: assignation simple matin1")
 def _():
     res, stats, _ = _app.assigner(
         [_planning("BTS MCO 73", ["2026-09-07"])],
-        [_dispo("Jean Dupont", {"2026-09-07": {"matin": True, "pm": False}})],
+        [_dispo("Jean Dupont", {"2026-09-07": {"matin1": True, "matin2": False, "pm1": False, "pm2": False}})],
         _aff_simple("BTS MCO 73", "Jean Dupont"),
     )
-    assert res["2026-09-07"]["BTS MCO 73"]["formateur"] == "Jean Dupont"
-    assert stats['assigned'] == 1 and stats['warn'] == 0
+    assert res["2026-09-07"]["BTS MCO 73"]["matin1"]["formateur"] == "Jean Dupont"
+    assert res["2026-09-07"]["BTS MCO 73"]["matin2"]["formateur"] == "⚠️"
+    assert stats['assigned'] == 1 and stats['warn'] == 3
 
-@_p2("assigner: formateur indisponible → ⚠️")
+@_p2("assigner: formateur indisponible tous créneaux → 4 ⚠️")
 def _():
     res, stats, _ = _app.assigner(
         [_planning("BTS MCO 73", ["2026-09-07"])],
-        [_dispo("Jean Dupont", {"2026-09-07": {"matin": False, "pm": False}})],
+        [_dispo("Jean Dupont", {"2026-09-07": {"matin1": False, "matin2": False, "pm1": False, "pm2": False}})],
         _aff_simple("BTS MCO 73", "Jean Dupont"),
     )
-    assert res["2026-09-07"]["BTS MCO 73"]["formateur"] == "⚠️"
-    assert stats['warn'] == 1
+    for slot in ["matin1", "matin2", "pm1", "pm2"]:
+        assert res["2026-09-07"]["BTS MCO 73"][slot]["formateur"] == "⚠️"
+    assert stats['warn'] == 4
 
 @_p2("assigner: classe sans affectation → ?")
 def _():
     res, _, _ = _app.assigner(
         [_planning("BTS INCONNU", ["2026-09-07"])], [], {}
     )
-    assert res["2026-09-07"]["BTS INCONNU"]["formateur"] == "?"
+    for slot in ["matin1", "matin2", "pm1", "pm2"]:
+        assert res["2026-09-07"]["BTS INCONNU"][slot]["formateur"] == "?"
 
-@_p2("assigner: alternance matin/pm")
+@_p2("assigner: créneaux indépendants (matin1+pm2 dispo)")
 def _():
-    dispo_jours = {
-        "2026-09-07": {"matin": True, "pm": True},
-        "2026-09-08": {"matin": True, "pm": True},
-    }
-    res, _, _ = _app.assigner(
-        [_planning("BTS MCO 73", ["2026-09-07", "2026-09-08"])],
-        [_dispo("Jean Dupont", dispo_jours)],
+    res, stats, _ = _app.assigner(
+        [_planning("BTS MCO 73", ["2026-09-07"])],
+        [_dispo("Jean Dupont", {"2026-09-07": {"matin1": True, "matin2": False, "pm1": False, "pm2": True}})],
         _aff_simple("BTS MCO 73", "Jean Dupont"),
     )
-    s1 = res["2026-09-07"]["BTS MCO 73"]["slot"]
-    s2 = res["2026-09-08"]["BTS MCO 73"]["slot"]
-    assert s1 != s2, f"pas d'alternance : s1={s1} s2={s2}"
+    assert res["2026-09-07"]["BTS MCO 73"]["matin1"]["formateur"] == "Jean Dupont"
+    assert res["2026-09-07"]["BTS MCO 73"]["matin2"]["formateur"] == "⚠️"
+    assert res["2026-09-07"]["BTS MCO 73"]["pm1"]["formateur"] == "⚠️"
+    assert res["2026-09-07"]["BTS MCO 73"]["pm2"]["formateur"] == "Jean Dupont"
+    assert stats['assigned'] == 2 and stats['warn'] == 2
 
-@_p2("assigner: heures comptabilisées (+4 par jour)")
+@_p2("assigner: heures comptabilisées (+2h par créneau)")
 def _():
     _, _, heures = _app.assigner(
         [_planning("BTS MCO 73", ["2026-09-07"])],
-        [_dispo("Jean Dupont", {"2026-09-07": {"matin": True, "pm": False}})],
+        [_dispo("Jean Dupont", {"2026-09-07": {"matin1": True, "matin2": True, "pm1": False, "pm2": False}})],
         _aff_simple("BTS MCO 73", "Jean Dupont"),
     )
     assert heures["Jean Dupont"]["Gestion"] == 4
+
+@_p2("assigner: 4 créneaux = +8h")
+def _():
+    _, _, heures = _app.assigner(
+        [_planning("BTS MCO 73", ["2026-09-07"])],
+        [_dispo("Jean Dupont", {"2026-09-07": {"matin1": True, "matin2": True, "pm1": True, "pm2": True}})],
+        _aff_simple("BTS MCO 73", "Jean Dupont"),
+    )
+    assert heures["Jean Dupont"]["Gestion"] == 8
 
 @_p2("assigner: formateur sans fichier dispo → ⚠️")
 def _():
     res, stats, _ = _app.assigner(
         [_planning("BTS MCO 73", ["2026-09-07"])],
-        [],  # aucun fichier dispo
+        [],
         _aff_simple("BTS MCO 73", "Jean Dupont"),
     )
-    assert res["2026-09-07"]["BTS MCO 73"]["formateur"] == "⚠️"
+    assert res["2026-09-07"]["BTS MCO 73"]["matin1"]["formateur"] == "⚠️"
 
 @_p2("assigner: matching par noms similaires")
 def _():
     res, stats, _ = _app.assigner(
         [_planning("BTS MCO 73", ["2026-09-07"])],
-        [_dispo("Dupont Jean", {"2026-09-07": {"matin": True, "pm": False}})],
+        [_dispo("Dupont Jean", {"2026-09-07": {"matin1": True, "matin2": False, "pm1": False, "pm2": False}})],
         _aff_simple("BTS MCO 73", "Jean Dupont"),
     )
-    assert res["2026-09-07"]["BTS MCO 73"]["formateur"] == "Jean Dupont"
+    assert res["2026-09-07"]["BTS MCO 73"]["matin1"]["formateur"] == "Jean Dupont"
     assert stats['assigned'] == 1
 
 @_p2("assigner: heures épuisées → ⚠️")
@@ -976,10 +1024,11 @@ def _():
                             'heures': 100, 'heures_faites': 100, 'priorite': 1}]}
     res, stats, _ = _app.assigner(
         [_planning("BTS MCO 73", ["2026-09-07"])],
-        [_dispo("Jean Dupont", {"2026-09-07": {"matin": True, "pm": False}})],
+        [_dispo("Jean Dupont", {"2026-09-07": {"matin1": True, "matin2": True, "pm1": True, "pm2": True}})],
         aff,
     )
-    assert res["2026-09-07"]["BTS MCO 73"]["formateur"] == "⚠️"
+    for slot in ["matin1", "matin2", "pm1", "pm2"]:
+        assert res["2026-09-07"]["BTS MCO 73"][slot]["formateur"] == "⚠️"
 
 @_p2("assigner: plusieurs classes indépendantes")
 def _():
@@ -991,12 +1040,12 @@ def _():
     }
     res, _, _ = _app.assigner(
         [_planning("BTS MCO 73", ["2026-09-07"]), _planning("BAC PRO 28", ["2026-09-07"])],
-        [_dispo("Dupont", {"2026-09-07": {"matin": True, "pm": True}}),
-         _dispo("Martin", {"2026-09-07": {"matin": True, "pm": True}})],
+        [_dispo("Dupont", {"2026-09-07": {"matin1": True, "matin2": True, "pm1": True, "pm2": True}}),
+         _dispo("Martin", {"2026-09-07": {"matin1": True, "matin2": True, "pm1": True, "pm2": True}})],
         aff,
     )
-    assert res["2026-09-07"]["BTS MCO 73"]["formateur"] == "Dupont"
-    assert res["2026-09-07"]["BAC PRO 28"]["formateur"] == "Martin"
+    assert res["2026-09-07"]["BTS MCO 73"]["matin1"]["formateur"] == "Dupont"
+    assert res["2026-09-07"]["BAC PRO 28"]["matin1"]["formateur"] == "Martin"
 
 
 # Routes Flask ------------------------------------------------------------

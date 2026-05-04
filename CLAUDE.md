@@ -2,9 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## RÈGLE DE TRAVAIL — Limite de modifications
+
+**Après 3 modifications infructueuses sur une même partie du programme, STOP.** Ne pas continuer à modifier. Prendre du recul, relire le fichier de référence (`template_OCTOBRE_2026_REF.xlsx`), et reformuler le problème avant de toucher au code.
+
 ## RÈGLE ABSOLUE — Fichier template Excel
 
-**INTERDICTION TOTALE de modifier `template_vierge_SEPTEMBRE_2026.xlsx`** — ce fichier est la référence de mise en forme et ne doit jamais être écrasé, remplacé, ou modifié par Claude, même pour ré-encoder la base64. Toute mise à jour de `_TEMPLATE_VIERGE_B64` dans `app.py` doit être faite manuellement par l'utilisateur.
+**INTERDICTION TOTALE de modifier `template_vierge_SEPTEMBRE_2026_corrige.xlsx`** — ce fichier est la référence de mise en forme et ne doit jamais être écrasé, remplacé, ou modifié par Claude, même pour ré-encoder la base64. Toute mise à jour de `_TEMPLATE_VIERGE_B64` dans `app.py` doit être faite manuellement par l'utilisateur.
 
 ## Repository
 
@@ -21,7 +25,8 @@ flask run
 # or with gunicorn (mirrors production)
 gunicorn app:app --bind 0.0.0.0:5000 --timeout 300 --workers 1
 
-# No test suite currently exists
+# Run tests
+python -X utf8 test_template_vierge.py
 ```
 
 ## Architecture
@@ -62,42 +67,66 @@ Three routes produce Excel files:
 
 - `FERIES` — hardcoded public holidays for 2026-2027 (update when extending to other years)
 - `ALL_MERGE_PAIRS` — merged column pairs in the reference template (do not change)
-- `JOURS_COLS` — detected automatically from the embedded template: currently `[2, 26, 54, 76]` (one per section). These are the columns where day labels and numbers are written. **Do not hardcode** — they are derived by `_detect_template_constants()` at startup by finding section starts from the header row.
-- `SLOT_ROWS` — `[7 + (i // 5) * 31 + (i % 5) * 6 for i in range(25)]`. Slot 0 = row 7 (Monday week 1). Each day slot = 6 rows. Each week = 31 rows (5 days × 6 + 1 separator). **Do not change** — tied to the physical template structure.
-- `TEMPLATE_LAST_ROW = 160` — the closing border row of the template. **Do not change.**
+- `JOURS_COLS` — currently `[2, 18, 38, 54]` (one per section). These are the columns where day labels and numbers are written.
+- `SLOT_ROWS` — `[6 + (i // 5) * 21 + (i % 5) * 4 for i in range(25)]`. Slot 0 = row 6 (1er jour semaine 1). Chaque slot = 4 lignes. Chaque semaine = 21 lignes (5 jours × 4 + 1 séparateur). **Ne pas modifier** — lié à la structure physique du template.
+- `TEMPLATE_LAST_ROW = 131` — la ligne de fermeture du template (bordure `medium` top). **Ne pas modifier.**
 - `DEFAULT_COLORS` — layout constants tied to the template structure
-- `_TEMPLATE_VIERGE_B64` — the reference template embedded as base64 at line ~101. **Always re-encode after modifying `template_vierge_SEPTEMBRE_2026.xlsx`** using: `base64.b64encode(open('template_vierge_SEPTEMBRE_2026.xlsx','rb').read()).decode('ascii')`
+- `_TEMPLATE_VIERGE_B64` — le template de référence embarqué en base64. **Toujours ré-encoder après modification de `template_vierge_SEPTEMBRE_2026_corrige.xlsx`** avec : `base64.b64encode(open('template_vierge_SEPTEMBRE_2026_corrige.xlsx','rb').read()).decode('ascii')`
 
 ### Template structure (ne pas modifier sans mettre à jour les constantes)
 
-Le fichier `template_vierge_SEPTEMBRE_2026.xlsx` est la référence. Structure fixe :
+Le fichier `template_vierge_SEPTEMBRE_2026_corrige.xlsx` est la référence. Structure fixe :
 
 - **Row 1** : titre mois (ex: `SEPTEMBRE 2026`), présent dans les 4 sections
 - **Row 4** : en-têtes des classes (ex: `BAC PRO 26`, `BTS MCO 99`...)
-- **Rows 7–160** : corps du tableau — 25 slots de 6 lignes chacun, 4 séparateurs de semaine
-- **Row 160** : ligne de fermeture (bordure `medium` top) — **ne jamais supprimer**
+- **Rows 6–131** : corps du tableau — 25 slots de 4 lignes chacun, 5 séparateurs de semaine
+- **Row 131** : ligne de fermeture (bordure `medium` top) — **ne jamais supprimer**
+
+**Structure d'un slot (4 lignes) :**
+```
+ligne slot+0 : séparateur fin (h≈11.4, border top=medium)
+ligne slot+1 : label du jour ("Lundi", "Mardi"…)   ← écriture du nom du jour
+ligne slot+2 : numéro du jour (1, 2, 3…)            ← écriture du numéro
+ligne slot+3 : contenu (h≈16.8, border bottom=medium)
+```
+Représente 4 créneaux de 2h = 8h par jour (2 matin + 2 après-midi).
+
+**Structure d'une semaine (21 lignes) :**
+- 5 jours × 4 lignes = 20 lignes
+- 1 ligne séparateur de semaine (h=7.2, border top+bottom=medium)
 
 **4 sections côte à côte** (séparées par des colonnes étroites ~1 char) :
 | Section | Col dates | Premières classes |
 |---|---|---|
 | 1 (BAC PRO) | col 2 (B) | col 4 |
-| 2 (BTS MCO) | col 26 (Z) | col 28 |
-| 3 (BTS GPME/NDRC) | col 54 (BB) | col 56 |
-| 4 (RDC/RH/M) | col 76 (BX) | col 78 |
+| 2 (BTS MCO) | col 18 | col 20 |
+| 3 (BTS GPME/NDRC) | col 38 | col 40 |
+| 4 (RDC/RH/M) | col 54 | col 56 |
 
-**Colonnes séparatrices** (largeur ~1 char, grises visuellement) : cols 1, 3, 6, 9, 12, 15, 18, 21, 25, 27, 30... toutes < 2 chars de large.
+**Séparateurs horizontaux entre semaines** : rows 26, 47, 68, 89, 110. Hauteur : 7.2pt.
 
-**Séparateurs horizontaux entre semaines** (lignes grises) : rows 33–37, 64–68, 95–99, 126–130. Hauteur : 8.25pt (≈11px).
+### Exemple du résultat attendu : `template_OCTOBRE_2026_REF.xlsx`
 
-### Logique de génération du template vierge (`generate_month_sheet_delete`)
+Octobre 2026 commence un Jeudi (slot_deb=3). Structure observée :
+- **Row 6** : séparateur début premier slot (h=11.4, border_top=medium) — toujours présent
+- **Row 7** : label "Jeudi", **Row 8** : numéro 1, **Row 9** : contenu (border_bottom=medium)
+- **Row 14** : séparateur semaine (h=7.2, border_top+bottom=medium) — après Vendredi
+- **Row 98** : dernier séparateur de semaine = closing row (h=7.2, border_top+bottom=medium)
+- `max_row` openpyxl = 109 (fantômes) mais la vraie dernière ligne utile = **98**
+- La **closing row = dernier séparateur de semaine** après le dernier jour utilisé
+- Colonnes blanches sur séparateurs : 16, 36, 52
 
-1. **Effacer** les dates existantes du template (issues de septembre) dans toutes les `JOURS_COLS`
-2. **Supprimer les slots vides du début** : `slot_deb = premier_jour.weekday()` slots × 6 lignes depuis row 7
-3. **Recalculer** `remaining_slots = [r - lignes_debut for r in SLOT_ROWS[slot_deb:]]`
-4. **Écrire** le label et le numéro du jour dans chaque `JOURS_COLS` pour chaque jour ouvré
-5. **Supprimer les slots vides de fin** : de `remaining_slots[nb_jours]` jusqu'à `TEMPLATE_LAST_ROW - 2 - lignes_debut`
+### Logique de génération du template vierge (`generate_month_sheet_delete` et `_appliquer_mois_sur_feuille`)
 
-Le `-2` dans `delete_until` est intentionnel : il préserve la ligne de fermeture (row 160 décalée) sans laisser de ligne vide résiduelle avant elle.
+**Ordre impératif :**
+1. **Effacer** les valeurs résiduelles dans tous les SLOT_ROWS (offsets 0–3, JOURS_COLS)
+2. **Écrire** les jours à partir de `SLOT_ROWS[slot_deb]` (pas depuis 0)
+3. **Supprimer le bas** : de `closing_row + 1` jusqu'à `TEMPLATE_LAST_ROW - 1` (la ligne 131 se déplace sur closing_row)
+4. **Supprimer le haut** : `slot_deb * 4` lignes depuis la ligne 6
+5. **Purger** `ws._cells` et `ws.row_dimensions` au-delà de la closing_row finale
+6. **closing_row** = séparateur de semaine qui suit le dernier jour = `SLOT_ROWS[slot_deb + nb_jours - 1] + 4` si dernier jour = vendredi, sinon le prochain séparateur de semaine dans la liste [26,47,68,89,110]
+
+**Lignes jamais supprimées :** 1–5 (titre/en-têtes) et la ligne 131 (closing originale).
 
 ### Frontend compatibility
 

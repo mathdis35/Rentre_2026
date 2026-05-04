@@ -637,6 +637,27 @@ def parse_planning_colorie(filepath):
     return [{'nom': nom, 'jours': sorted(jours)} for nom, jours in classes_jours.items()]
 
 # ─── Génération template colorié (ancien) ────────────────────────────────────
+_OFFICE_THEME_COLORS = [
+    '000000','FFFFFF','1F497D','EEECE1','4F81BD','C0504D','9BBB59','8064A2','4BACC6','F79646',
+]
+
+def _resolve_fill_color(fill):
+    if not fill or not fill.fgColor: return None
+    fc = fill.fgColor
+    if fc.type == 'rgb':
+        c = fc.rgb
+        return c if c not in ('00000000', 'FFFFFFFF') else None
+    if fc.type == 'theme':
+        base = _OFFICE_THEME_COLORS[fc.theme] if fc.theme < len(_OFFICE_THEME_COLORS) else '808080'
+        t = fc.tint
+        r, g, b = int(base[0:2],16), int(base[2:4],16), int(base[4:6],16)
+        if t >= 0:
+            r = int(r + (255-r)*t); g = int(g + (255-g)*t); b = int(b + (255-b)*t)
+        else:
+            r = int(r*(1+t)); g = int(g*(1+t)); b = int(b*(1+t))
+        return 'FF{:02X}{:02X}{:02X}'.format(r, g, b)
+    return None
+
 def detect_structure(ws):
     kw = ['BTS','BAC','EC ','CGC','NDRC','GPME','RDC','RH','Master']
     cc = {}; colors = {}
@@ -645,17 +666,13 @@ def detect_structure(ws):
             cell = ws.cell(row=ri, column=ci); v = cell.value
             if isinstance(v, str) and any(k in v for k in kw):
                 nom = v.strip(); cc[nom] = ci
-                if cell.fill and cell.fill.fgColor and cell.fill.fgColor.type == 'rgb':
-                    c = cell.fill.fgColor.rgb
-                    if c not in ('00000000', 'FFFFFFFF'): colors[nom] = c
+                c = _resolve_fill_color(cell.fill)
+                if c: colors[nom] = c
     for nom, ci in cc.items():
         if nom in colors: continue
         for ri in range(5, min(25, ws.max_row+1)):
-            cell = ws.cell(row=ri, column=ci)
-            if cell.fill and cell.fill.fgColor and cell.fill.fgColor.type == 'rgb':
-                c = cell.fill.fgColor.rgb
-                if c not in ('00000000', 'FFFFFFFF', None):
-                    colors[nom] = c; break
+            c = _resolve_fill_color(ws.cell(row=ri, column=ci).fill)
+            if c: colors[nom] = c; break
     jf_set = {'lundi','mardi','mercredi','jeudi','vendredi','lun','mar','mer','jeu','ven'}
     fdr = 6; dlc = 2
     for ri in range(3, 20):
@@ -751,48 +768,38 @@ def colorier_multifeuilles(multi_path, planning_classes, output_path):
             if nom not in colors:
                 colors[nom] = DEFAULT_COLORS[ci_def % len(DEFAULT_COLORS)]; ci_def += 1
 
-        # Repérer les lignes de données : cherche nom de jour dans col 1-4
-        # Le numéro du jour est écrit à ri+1 (ligne suivante, mêmes colonnes)
-        row_dates = {}  # { 'YYYY-MM-DD': row_idx }
+        # Repérer les lignes de données : cherche label jour dans JOURS_COLS
+        # Structure slot : rl+0=séparateur, rl+1=label, rl+2=num, rl+3=contenu
+        row_dates = {}  # { 'YYYY-MM-DD': rl }  rl = row du séparateur (slot+0)
         for ri in range(1, ws.max_row + 1):
-            for ci2 in range(1, 5):
-                v = ws.cell(row=ri, column=ci2).value
+            for lci in JOURS_COLS:
+                v = ws.cell(row=ri, column=lci).value
                 if not isinstance(v, str): continue
                 if v.strip().lower() not in jf: continue
-                # Le numéro est sur la ligne suivante dans les mêmes colonnes
-                for lci in JOURS_COLS:
-                    dv = ws.cell(row=ri + 1, column=lci).value
-                    if isinstance(dv, (int, float)) and 1 <= int(dv) <= 31:
-                        try:
-                            d = datetime.date(yr, mn, int(dv))
-                            ds = d.strftime('%Y-%m-%d')
-                            if ds not in row_dates:
-                                row_dates[ds] = ri
-                        except: pass
-                        break
+                dv = ws.cell(row=ri + 1, column=lci).value
+                if isinstance(dv, (int, float)) and 1 <= int(dv) <= 31:
+                    try:
+                        d = datetime.date(yr, mn, int(dv))
+                        ds = d.strftime('%Y-%m-%d')
+                        if ds not in row_dates:
+                            row_dates[ds] = ri - 1  # rl = ligne séparateur = ri-1
+                    except: pass
                 break
 
-        # Colorier — chaque slot couvre 6 lignes (ri à ri+5)
-        SLOT_HEIGHT = 6
-        for ds, ri in row_dates.items():
+        # Colorier uniquement — 4 lignes par slot (rl+0 à rl+3), sans toucher aux valeurs
+        for ds, rl in row_dates.items():
             classes_ce_jour = jours_par_date.get(ds, set())
             for classe_nom, col_idx in cc.items():
                 a_cours = any(
                     noms_similaires(pc_nom, classe_nom)
                     for pc_nom in classes_ce_jour
                 )
-                color = colors.get(classe_nom, 'FFD9D9D9')
-                if len(color) == 6: color = 'FF' + color
-                fill_on  = PatternFill(start_color=color, end_color=color, fill_type='solid')
-                fill_off = PatternFill(fill_type=None)
-                for offset in range(SLOT_HEIGHT):
-                    cell = ws.cell(row=ri - 1 + offset, column=col_idx)
-                    if a_cours:
-                        cell.fill = fill_on
-                    else:
-                        cell.fill = fill_off
-                        cell.value = None
                 if a_cours:
+                    color = colors.get(classe_nom, 'FFD9D9D9')
+                    if len(color) == 6: color = 'FF' + color
+                    fill_on = PatternFill(start_color=color, end_color=color, fill_type='solid')
+                    for offset in range(4):
+                        ws.cell(row=rl + offset, column=col_idx).fill = fill_on
                     total += 1
 
     wb.save(output_path)

@@ -344,8 +344,7 @@
   <section id="panel-formateurs" class="tab-panel">
 
     <div class="info-banner" style="background:#EFF4FF;border:1px solid #B8CFEE;color:#0f2d52">
-      <strong>Planning formateurs</strong> — Uploadez une fois le <strong>tableau formateurs</strong> (CLASSE / FORMATEUR / MATIÈRE / HEURES) — il sera mémorisé.
-      Ajoutez ensuite les <strong>disponibilités formateurs</strong> et le <strong>template colorié</strong> (multi-feuilles avec les jours colorés) pour générer l'assignation automatique.
+      <strong>Planning formateurs</strong> — Déposez le <strong>tableau formateurs</strong>, les <strong>disponibilités</strong> et le <strong>template colorié</strong> pour générer l'assignation automatique.
     </div>
 
     <div class="g2w">
@@ -354,23 +353,15 @@
         <div class="card" style="padding:17px">
           <div class="stitle" style="color:#1A4A7A">Fichiers nécessaires</div>
 
-          <!-- Tableau formateurs mémorisé -->
-          <div id="f-stored" class="stored-ok" style="display:none;margin-bottom:12px;background:#EFF4FF;border:1px solid #B8CFEE;color:#1A4A7A">
-            <span style="font-size:16px">✅</span>
-            <div class="stored-info">
-              <div class="stored-name" id="f-stored-name"></div>
-              <div class="stored-sub">Tableau formateurs mémorisé — CLASSE / FORMATEUR / MATIÈRE / HEURES</div>
-              <div id="f-mois-couverts" style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px"></div>
-            </div>
-            <button class="pb pb-gh" id="f-tpl-change" style="font-size:11px">Changer</button>
-          </div>
-          <div id="f-upload" style="margin-bottom:12px">
+          <!-- Tableau formateurs -->
+          <div style="margin-bottom:12px">
             <div class="drop-zone" id="f-tpl-drop" style="--accent:#1A4A7A;--accent-bg:#EFF4FF">
               <input type="file" id="f-tpl-file" accept=".xlsx" style="z-index:2"/>
               <div class="dz-icon">📊</div>
               <div class="dz-label">Tableau formateurs</div>
               <div class="dz-hint">CLASSE / FORMATEUR / MATIÈRE / HEURES — .xlsx</div>
             </div>
+            <div class="file-list" id="f-tpl-files"></div>
           </div>
 
           <!-- Disponibilités (multi-fichiers) -->
@@ -386,10 +377,10 @@
 
           <!-- Template colorié -->
           <div class="drop-zone" id="f-pla-drop" style="--accent:#1A4A7A;--accent-bg:#EFF4FF">
-            <input type="file" id="f-pla-file" accept=".xls,.xlsx" multiple style="z-index:2"/>
+            <input type="file" id="f-pla-file" accept=".xlsx" style="z-index:2"/>
             <div class="dz-icon">🗓</div>
             <div class="dz-label" id="f-pla-lbl">Template colorié</div>
-            <div class="dz-hint">Fichier multi-feuilles avec les jours colorés par classe — .xlsx</div>
+            <div class="dz-hint">Fichier multi-feuilles avec les jours colorés — .xlsx</div>
           </div>
           <div class="file-list" id="f-files"></div>
         </div>
@@ -532,7 +523,7 @@ const S = {
   c: { sel: new Set([9,10,11,12,1,2,3,4,5,6]), annee: 2026, plannings: [],
        tplFile: null, tplName: null, isMulti: false, moisCouverts: [], busy: false },
   f: { sel: new Set([9,10,11,12,1,2,3,4,5,6]), annee: 2026, plannings: [],
-       dispos: [], moisCouverts: [], busy: false },
+       dispos: [], moisCouverts: [], tplFile: null, tplName: null, busy: false },
   m: { fichiers: [], busy: false },
 };
 
@@ -593,16 +584,12 @@ function renderMoisCouverts(panel) {
 
 function setTemplate(file) {
   S.tplFile = file; S.tplName = file.name;
-  S.f.moisCouverts = [];
   syncTemplateBadge();
   syncTemplateBanners();
-  verifierTemplate(file, 'f');
   refresh();
 }
 function clearTemplate() {
   S.tplFile = null; S.tplName = null;
-  S.f.moisCouverts = [];
-  document.getElementById('f-mois-couverts').innerHTML = '';
   syncTemplateBadge();
   syncTemplateBanners();
   refresh();
@@ -619,23 +606,17 @@ function syncTemplateBadge() {
 }
 
 function syncTemplateBanners() {
-  // Onglets v et f : template partagé
-  [
-    { storedId:'v-stored', nameId:'v-stored-name', uploadId:'v-upload' },
-    { storedId:'f-stored', nameId:'f-stored-name', uploadId:'f-upload' },
-  ].forEach(({ storedId, nameId, uploadId }) => {
-    const stored = document.getElementById(storedId);
-    const upload = document.getElementById(uploadId);
-    if (!stored || !upload) return;
+  // Onglet v uniquement : template partagé
+  const stored = document.getElementById('v-stored');
+  const upload = document.getElementById('v-upload');
+  if (stored && upload) {
     if (S.tplFile) {
-      document.getElementById(nameId).textContent = S.tplName;
-      stored.style.display = 'flex';
-      upload.style.display = 'none';
+      document.getElementById('v-stored-name').textContent = S.tplName;
+      stored.style.display = 'flex'; upload.style.display = 'none';
     } else {
-      stored.style.display = 'none';
-      upload.style.display = 'block';
+      stored.style.display = 'none'; upload.style.display = 'block';
     }
-  });
+  }
   // Onglet c : template propre
   syncColorieTemplate();
 }
@@ -694,16 +675,35 @@ document.getElementById('tpl-badge-clear').addEventListener('click', clearTempla
 const cTplChange = document.getElementById('c-tpl-change');
 if (cTplChange) cTplChange.addEventListener('click', clearColorieTemplate);
 
-// Inputs template partagé (v et f)
-['v-tpl-file','f-tpl-file'].forEach(id => {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener('change', function() { if (this.files[0]) setTemplate(this.files[0]); });
+// Input template partagé (onglet v uniquement)
+const vTplFile = document.getElementById('v-tpl-file');
+if (vTplFile) vTplFile.addEventListener('change', function() { if (this.files[0]) setTemplate(this.files[0]); });
+setupDrop(document.getElementById('v-tpl-drop'), files => {
+  const f = Array.from(files).find(f => f.name.endsWith('.xlsx'));
+  if (f) setTemplate(f);
 });
-['v-tpl-drop','f-tpl-drop'].forEach(id => {
-  setupDrop(document.getElementById(id), files => {
-    const f = Array.from(files).find(f => f.name.endsWith('.xlsx'));
-    if (f) setTemplate(f);
-  });
+
+// Input tableau formateurs (onglet f)
+function setFTpl(file) {
+  S.f.tplFile = file; S.f.tplName = file.name;
+  renderFTplChip();
+  refresh();
+}
+function renderFTplChip() {
+  const el = document.getElementById('f-tpl-files');
+  if (!el) return;
+  if (!S.f.tplFile) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="file-chip" style="background:#EFF4FF">
+    <span style="font-size:14px">📊</span>
+    <span class="file-chip-name">${esc(S.f.tplName)}</span>
+    <button class="file-chip-del" onclick="S.f.tplFile=null;S.f.tplName=null;renderFTplChip();refresh()">×</button>
+  </div>`;
+}
+const fTplFile = document.getElementById('f-tpl-file');
+if (fTplFile) fTplFile.addEventListener('change', function() { if (this.files[0]) setFTpl(this.files[0]); });
+setupDrop(document.getElementById('f-tpl-drop'), files => {
+  const f = Array.from(files).find(f => f.name.endsWith('.xlsx'));
+  if (f) setFTpl(f);
 });
 
 // Input template colorié (propre à c)
@@ -890,20 +890,10 @@ function buildChecklist() {
   const ma = getMoisAnnee(f.annee);
 
   // Vérif mois manquants dans le template
-  let moisManquants = [];
-  if (S.tplFile && f.moisCouverts.length > 0 && f.sel.size > 0) {
-    const couvertsSet = new Set(f.moisCouverts.map(m => `${m.mois}/${m.annee}`));
-    moisManquants = ma.filter(m => f.sel.has(m.mois) && !couvertsSet.has(`${m.mois}/${m.annee}`));
-  }
-
-  const tplVal = S.tplFile
-    ? (f.moisCouverts.length > 0 ? `${f.moisCouverts.length} feuille${f.moisCouverts.length>1?'s':''}` : S.tplName)
-    : null;
-
   const items = [
-    { label: 'Tableau formateurs',           ok: !!S.tplFile,            val: tplVal },
-    { label: 'Disponibilités formateurs',   ok: f.dispos.length > 0,    val: f.dispos.length > 0 ? `${f.dispos.length} fichier${f.dispos.length>1?'s':''}` : null },
-    { label: 'Template colorié',            ok: f.plannings.length > 0, val: f.plannings.length > 0 ? `${f.plannings.length} fichier${f.plannings.length>1?'s':''}` : null },
+    { label: 'Tableau formateurs',         ok: !!f.tplFile,            val: f.tplName || null },
+    { label: 'Disponibilités formateurs',  ok: f.dispos.length > 0,    val: f.dispos.length > 0 ? `${f.dispos.length} fichier${f.dispos.length>1?'s':''}` : null },
+    { label: 'Template colorié',           ok: f.plannings.length > 0, val: f.plannings.length > 0 ? `${f.plannings.length} fichier${f.plannings.length>1?'s':''}` : null },
     { label: 'Mois sélectionnés',            ok: f.sel.size > 0,         val: f.sel.size > 0 ? `${f.sel.size} mois` : null },
   ];
 
@@ -915,11 +905,6 @@ function buildChecklist() {
     </div>
   `).join('');
 
-  if (moisManquants.length > 0) {
-    html += `<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#fff8ed;border:1px solid #f0c070;font-size:11px;color:#8B6000">
-      ⚠️ <strong>Mois absents du template :</strong> ${moisManquants.map(m => `${MOIS_COURT[m.mois-1]} ${m.annee}`).join(', ')}
-    </div>`;
-  }
 
   document.getElementById('f-checklist').innerHTML = html;
 }
@@ -954,7 +939,7 @@ function refresh() {
 
   // Formateurs
   const f   = S.f;
-  const fOk = !!S.tplFile && f.dispos.length > 0 && f.plannings.length > 0 && f.sel.size > 0;
+  const fOk = !!f.tplFile && f.dispos.length > 0 && f.plannings.length > 0 && f.sel.size > 0;
   const fBtn = document.getElementById('f-btn');
   fBtn.disabled = !fOk || f.busy;
   fBtn.textContent = f.busy ? '⏳ Traitement…' : '⚡ Générer le planning';
@@ -1198,12 +1183,12 @@ document.getElementById('f-btn').addEventListener('click', async () => {
   const ma  = getMoisAnnee(ps.annee);
   const sel = ma.filter(m => ps.sel.has(m.mois));
   console.log('[f-btn] sel=', sel.length, 'dispos=', !!ps.dispos, 'plannings=', ps.plannings.length, 'tpl=', !!S.tplFile, 'busy=', ps.busy);
-  if (!sel.length || !ps.dispos.length || !ps.plannings.length || !S.tplFile) { console.warn('[f-btn] guard bloqué'); return; }
+  if (!sel.length || !ps.dispos.length || !ps.plannings.length || !ps.tplFile) { console.warn('[f-btn] guard bloqué'); return; }
 
   ps.busy = true; refresh(); clearResult('f'); setProgress('f', 'Envoi au serveur…', 2); startChrono('f');
 
   const fd = new FormData();
-  fd.append('template', S.tplFile, S.tplName);
+  fd.append('template', ps.tplFile, ps.tplName);
   ps.dispos.forEach((f, i) => fd.append(`dispos_${i}`, f, f.name));
   ps.plannings.forEach((f, i) => fd.append(`planning_${i}`, f, f.name));
   fd.append('annee_debut', sel[0].annee);

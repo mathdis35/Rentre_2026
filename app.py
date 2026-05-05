@@ -629,11 +629,12 @@ def parse_planning_colorie(filepath):
                 break
 
         # Pour chaque slot, vérifier quelles colonnes de classe sont colorées
+        # ri = label jour, slot = 4 lignes : ri-1, ri, ri+1, ri+2
         BLANC = {'00000000', 'FFFFFFFF', None}
         for d, ri in row_dates.items():
             for classe_nom, col_idx in cc.items():
-                for offset in range(6):
-                    cell = ws.cell(row=ri - 1 + offset, column=col_idx)
+                for offset in range(-1, 3):
+                    cell = ws.cell(row=ri + offset, column=col_idx)
                     if cell.fill and cell.fill.fgColor and cell.fill.fgColor.type == 'rgb':
                         if cell.fill.fgColor.rgb not in BLANC:
                             classes_jours[classe_nom].add(d.strftime('%Y-%m-%d'))

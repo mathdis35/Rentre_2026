@@ -852,9 +852,14 @@ function renderFileList(p) {
 setupDrop(document.getElementById('c-pla-drop'), files => addPlannings('c', files));
 document.getElementById('c-pla-file').addEventListener('change', function() { addPlannings('c', this.files); });
 
-// Formateurs
-setupDrop(document.getElementById('f-pla-drop'), files => addPlannings('f', files));
-document.getElementById('f-pla-file').addEventListener('change', function() { addPlannings('f', this.files); });
+// Formateurs — template colorié : auto-sélection des mois après dépôt
+function addFColorie(files) {
+  addPlannings('f', files);
+  const f = Array.from(files).find(f => f.name.endsWith('.xlsx'));
+  if (f) verifierTemplate(f, 'f');
+}
+setupDrop(document.getElementById('f-pla-drop'), files => addFColorie(files));
+document.getElementById('f-pla-file').addEventListener('change', function() { addFColorie(this.files); });
 
 // ─── Fichiers disponibilités formateurs (multi) ───────────────────────────────
 function addDispos(files) {

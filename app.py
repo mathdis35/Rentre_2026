@@ -553,8 +553,8 @@ def ecrire_planning(template_path, assignment, mois_cibles, output_path):
             for cn, ci in cc.items():
                 for k, slots in assignment[ds].items():
                     if noms_similaires(k, cn):
-                        # ri = matin1, ri+1 = matin2, ri+2 = pm1, ri+3 = pm2
-                        for slot, row in [('matin1', ri), ('matin2', ri+1), ('pm1', ri+2), ('pm2', ri+3)]:
+                        # ri=label jour, donc: ri-1=matin1, ri=matin2, ri+1=pm1, ri+2=pm2
+                        for slot, row in [('matin1', ri-1), ('matin2', ri), ('pm1', ri+1), ('pm2', ri+2)]:
                             sv = slots.get(slot, {})
                             f_ = sv.get('formateur', '')
                             m_ = sv.get('matiere', '')

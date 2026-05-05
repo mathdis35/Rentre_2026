@@ -459,6 +459,8 @@ def assigner(planning_classes, dispos_formateurs, affectations):
     dispo_idx = {d['nom']: d['dispo'] for d in dispos_formateurs}
     result = defaultdict(dict)
     stats = {'assigned': 0, 'warn': 0}
+    # Suivi des formateurs déjà assignés : {(jour, slot): set(formateur)}
+    deja_pris = defaultdict(set)
 
     SLOTS = ['matin1', 'matin2', 'pm1', 'pm2']
 
@@ -479,9 +481,12 @@ def assigner(planning_classes, dispos_formateurs, affectations):
                     if e['heures'] - e['heures_faites'] <= 0: continue
                     if pd_ is None: continue
                     jd = pd_.get(j, {})
-                    if jd.get(slot, False): assigned = e; break
+                    if not jd.get(slot, False): continue
+                    if e['formateur'] in deja_pris[(j, slot)]: continue
+                    assigned = e; break
                 if assigned:
                     assigned['heures_faites'] += 2
+                    deja_pris[(j, slot)].add(assigned['formateur'])
                     result[j][cn][slot] = {'formateur': assigned['formateur'], 'matiere': assigned['matiere']}
                     stats['assigned'] += 1
                 else:

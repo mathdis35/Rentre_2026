@@ -554,11 +554,17 @@ def ecrire_planning(template_path, assignment, mois_cibles, output_path):
                 for k, slots in assignment[ds].items():
                     if noms_similaires(k, cn):
                         # ri=label jour, donc: ri-1=matin1, ri=matin2, ri+1=pm1, ri+2=pm2
+                        BLANC = {'00000000', 'FFFFFFFF', None}
                         for slot, row in [('matin1', ri-1), ('matin2', ri), ('pm1', ri+1), ('pm2', ri+2)]:
                             sv = slots.get(slot, {})
                             f_ = sv.get('formateur', '')
                             m_ = sv.get('matiere', '')
                             cell = ws.cell(row=row, column=ci)
+                            # N'écrire que si la case est coloriée (classe a cours ce jour)
+                            fg = cell.fill.fgColor if cell.fill else None
+                            cell_color = fg.rgb if fg and fg.type == 'rgb' else None
+                            if cell_color in BLANC:
+                                continue
                             if f_ and f_ not in ('⚠️', '?'):
                                 cell.value = f'{f_}\n{m_}'
                                 cell.font = Font(name='Calibri', size=8, color='FF000000')

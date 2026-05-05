@@ -553,25 +553,20 @@ def ecrire_planning(template_path, assignment, mois_cibles, output_path):
             for cn, ci in cc.items():
                 for k, slots in assignment[ds].items():
                     if noms_similaires(k, cn):
-                        # slots = {'matin1': {'formateur':..,'matiere':..}, ...}
-                        # Prendre le premier formateur réel (non ⚠️ non ?)
-                        formateur, matiere = None, None
-                        all_warn = True
-                        for sv in slots.values():
-                            if sv.get('formateur') not in ('⚠️', '?', None):
-                                formateur = sv['formateur']; matiere = sv.get('matiere', ''); all_warn = False; break
-                            if sv.get('formateur') != '⚠️': all_warn = False
-                        if formateur:
-                            c1 = ws.cell(row=ri + 1, column=ci)
-                            c2 = ws.cell(row=ri + 2, column=ci)
-                            c1.value = formateur; c2.value = matiere
-                            for c in (c1, c2):
-                                old = c.font
-                                c.font = Font(name=old.name or 'Calibri', size=old.size or 9,
-                                              bold=(c is c1), color=old.color)
-                                c.alignment = Alignment(horizontal='center', vertical='center')
-                        elif all_warn:
-                            ws.cell(row=ri, column=ci).value = '⚠️'
+                        # ri = matin1, ri+1 = matin2, ri+2 = pm1, ri+3 = pm2
+                        for slot, row in [('matin1', ri), ('matin2', ri+1), ('pm1', ri+2), ('pm2', ri+3)]:
+                            sv = slots.get(slot, {})
+                            f_ = sv.get('formateur', '')
+                            m_ = sv.get('matiere', '')
+                            cell = ws.cell(row=row, column=ci)
+                            if f_ and f_ not in ('⚠️', '?'):
+                                cell.value = f'{f_}\n{m_}'
+                                cell.font = Font(name='Calibri', size=8, color='FF000000')
+                                cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                            elif f_ == '⚠️':
+                                cell.value = '⚠️'
+                                cell.font = Font(name='Calibri', size=9, color='FF000000')
+                                cell.alignment = Alignment(horizontal='center', vertical='center')
                         break
     wb.save(output_path)
 

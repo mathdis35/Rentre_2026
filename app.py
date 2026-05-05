@@ -548,19 +548,19 @@ def ecrire_planning(template_path, assignment, mois_cibles, output_path):
                                     if ds not in dr: dr[ds] = ri
                                 except: pass
 
+        row_max_lines = {}  # { row_num: max nb lignes écrites }
+        BLANC = {'00000000', 'FFFFFFFF', None}
         for ds, ri in dr.items():
             if ds not in assignment: continue
             for cn, ci in cc.items():
                 for k, slots in assignment[ds].items():
                     if noms_similaires(k, cn):
                         # ri=label jour, donc: ri-1=matin1, ri=matin2, ri+1=pm1, ri+2=pm2
-                        BLANC = {'00000000', 'FFFFFFFF', None}
                         for slot, row in [('matin1', ri-1), ('matin2', ri), ('pm1', ri+1), ('pm2', ri+2)]:
                             sv = slots.get(slot, {})
                             f_ = sv.get('formateur', '')
                             m_ = sv.get('matiere', '')
                             cell = ws.cell(row=row, column=ci)
-                            # N'écrire que si la case est coloriée (classe a cours ce jour)
                             fg = cell.fill.fgColor if cell.fill else None
                             cell_color = fg.rgb if fg and fg.type == 'rgb' else None
                             if cell_color in BLANC:
@@ -569,11 +569,16 @@ def ecrire_planning(template_path, assignment, mois_cibles, output_path):
                                 cell.value = f'{f_}\n{m_}'
                                 cell.font = Font(name='Calibri', size=8, color='FF000000')
                                 cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                                row_max_lines[row] = max(row_max_lines.get(row, 0), 2)
                             elif f_ == '⚠️':
                                 cell.value = '⚠️'
                                 cell.font = Font(name='Calibri', size=9, color='FF000000')
                                 cell.alignment = Alignment(horizontal='center', vertical='center')
+                                row_max_lines[row] = max(row_max_lines.get(row, 0), 1)
                         break
+        # Ajuster la hauteur des lignes en fonction du contenu écrit
+        for row, nb_lignes in row_max_lines.items():
+            ws.row_dimensions[row].height = max(nb_lignes * 14, 16.8)
     wb.save(output_path)
 
 # ─── Parser planning colorié ─────────────────────────────────────────────────

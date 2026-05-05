@@ -541,8 +541,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 async function verifierTemplate(file, panel) {
   const el = document.getElementById(`${panel}-mois-couverts`);
   console.log('[verifierTemplate]', panel, 'el=', el, 'file=', file?.name);
-  if (!el) return;
-  el.innerHTML = '<span style="font-size:11px;opacity:.6">Analyse…</span>';
+  if (el) el.innerHTML = '<span style="font-size:11px;opacity:.6">Analyse…</span>';
   try {
     const fd = new FormData();
     fd.append('template', file, file.name);

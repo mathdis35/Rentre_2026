@@ -194,15 +194,17 @@ def parse_disponibilite(filepath):
 
     if len(rows) < 3: return {'nom': nom, 'dispo': {}}
 
-    # Extraire le nom depuis le fichier (cherche la première cellule non-vide
-    # après un label contenant "nom" ou "prénom")
+    # Extraire le nom : cherche un label "nom/prénom" sur la ligne,
+    # puis prend la première valeur non-vide sur cette même ligne
     for ri in range(min(6, len(rows))):
         row = rows[ri] if rows[ri] else ()
-        for ci, val in enumerate(row):
-            if isinstance(val, str) and val.strip() and ci > 0:
-                prev = row[ci - 1]
-                if isinstance(prev, str) and any(prev.lower().startswith(k) or (' ' + k) in prev.lower() for k in ['nom', 'prénom', 'prenom']):
+        row_str = [v for v in row if isinstance(v, str) and v.strip()]
+        has_label = any(any(k in v.lower() for k in ['nom', 'prénom', 'prenom']) for v in row_str)
+        if has_label:
+            for val in row_str:
+                if not any(k in val.lower() for k in ['nom', 'prénom', 'prenom', 'planning', 'de :']):
                     nom = val.strip(); break
+            if nom != Path(filepath).stem: break
 
     # Trouver la ligne contenant les en-têtes de mois (datetimes ou chaînes mois/année)
     month_row_idx = None

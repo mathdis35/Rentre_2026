@@ -93,12 +93,25 @@ def parse_planning_xls(filepath):
         wb = xlrd.open_workbook(filepath, formatting_info=True)
     except Exception as e:
         return {'nom': Path(filepath).stem, 'jours': []}
-    ws = wb.sheet_by_index(0)
+    # Prendre la première feuille non-vide (certains fichiers ont Feuil2 vide en index 0)
+    ws = None
+    for si in range(wb.nsheets):
+        s = wb.sheet_by_index(si)
+        if s.nrows > 0:
+            ws = s
+            break
+    if ws is None:
+        ws = wb.sheet_by_index(0)
     nom = Path(filepath).stem
     for c in range(ws.ncols):
         v = ws.cell_value(0, c)
         if isinstance(v, str) and len(v.strip()) > 3:
             nom = v.strip(); break
+    # Si le nom extrait ne contient pas de numéro, compléter avec le numéro du nom de fichier
+    if not re.search(r'\d', nom):
+        m_num = re.search(r'\b(\d{1,3})\b', Path(filepath).stem)
+        if m_num:
+            nom = nom.rstrip() + ' ' + m_num.group(1)
 
     jours = []
     # Détecter toutes les lignes header (contenant des mois)
@@ -709,11 +722,18 @@ _ALIAS_CLASSES = {
 }
 _ALIAS_REVERSE = {alias.upper(): canon for canon, aliases in _ALIAS_CLASSES.items() for alias in aliases}
 
+def _strip_accents(s):
+    import unicodedata as _ud
+    return ''.join(c for c in _ud.normalize('NFD', s) if _ud.category(c) != 'Mn')
+
 def _normalise_nom(n):
     import re as _re
-    nu = n.strip().upper()
+    nu = _strip_accents(n.strip()).upper()
+    # Supprimer les formes féminines entre parenthèses ex: (E) ou (LE)
+    nu = _re.sub(r'\([A-Z]{1,4}\)', '', nu)
     # Supprimer mots parasites
-    for w in ['PLANNING','BACHELOR','COMMERCE','CONTRAT','APP','VERSION','MODIFIÉ','MODIFIE','JUILLET']:
+    for w in ['PLANNING','BACHELOR','COMMERCE','CONTRAT','APP','VERSION','MODIFIE','JUILLET',
+              'EUROPEEN','TITRE','PRO','CFA']:
         nu = _re.sub(r'\b' + w + r'\b', '', nu)
     # Remplacer MCOM/MASTERE par M
     nu = _re.sub(r'\bMCOM\b', 'M', nu)
@@ -722,9 +742,15 @@ def _normalise_nom(n):
     nu = _re.sub(r'\bM(\d+)\b', r'M \1', nu)
     return nu.strip()
 
+def _acronyme_match(short_word, long_words):
+    """Vérifie si short_word est un acronyme formé par les initiales de long_words.
+    Ex: 'EC' matches ['EMPLOYE','COMMERCIAL'], 'RDC' matches ['RESPONSABLE','DEVELOPPEMENT','COMMERCIAL']"""
+    initials = ''.join(w[0] for w in long_words if w)
+    return short_word in initials or initials.startswith(short_word)
+
 def noms_similaires(a, b):
     """Retourne True si deux noms désignent probablement la même entité.
-    - Avec numéros (classes) : numéro commun + mot commun
+    - Avec numéros (classes) : numéro commun + mot commun ou acronyme commun
     - Sans numéros (formateurs) : au moins 2 mots significatifs en commun"""
     import re as _re
     # Alias explicites M3/M4
@@ -733,19 +759,29 @@ def noms_similaires(a, b):
     # Normaliser avant comparaison
     a, b = _normalise_nom(a), _normalise_nom(b)
     STOP = {'DE','DU','LE','LA','LES','ET','EN','PAR','POUR','SUR','AU','AUX',
-            'TABLEAU','PLANNING','DISPONIBILITES','DISPONIBILITÉ','DISPONIBILITÉS'}
+            'TABLEAU','PLANNING','DISPONIBILITES','DISPONIBILITE','DISPONIBILITES'}
     nums_a = set(_re.findall(r'\d+', a))
     nums_b = set(_re.findall(r'\d+', b))
-    words_a = set(w.upper() for w in _re.findall(r'[A-Za-zÀ-ɏ]+', a)) - STOP
-    words_b = set(w.upper() for w in _re.findall(r'[A-Za-zÀ-ɏ]+', b)) - STOP
-    common_words = words_a & words_b
+    words_a = [w.upper() for w in _re.findall(r'[A-Za-z]+', a) if w.upper() not in STOP]
+    words_b = [w.upper() for w in _re.findall(r'[A-Za-z]+', b) if w.upper() not in STOP]
+    set_a, set_b = set(words_a), set(words_b)
+    common_words = set_a & set_b
     if nums_a and nums_b:
-        # Noms avec numéros : numéro commun + (mot commun OU aucun mot des deux côtés)
-        return bool(nums_a & nums_b) and (bool(common_words) or (not words_a and not words_b))
+        if not (nums_a & nums_b): return False
+        if common_words: return True
+        if not set_a and not set_b: return True
+        # Vérifier si un mot court (≤5 lettres) dans l'un est acronyme des mots de l'autre
+        short_a = [w for w in set_a if len(w) <= 5]
+        short_b = [w for w in set_b if len(w) <= 5]
+        for sw in short_a:
+            if _acronyme_match(sw, words_b): return True
+        for sw in short_b:
+            if _acronyme_match(sw, words_a): return True
+        return False
     else:
         # Noms sans numéros (formateurs) : au moins 2 mots significatifs communs
         # OU 1 mot commun si l'un des noms est court (≤3 mots)
-        min_words = min(len(words_a), len(words_b))
+        min_words = min(len(set_a), len(set_b))
         return len(common_words) >= 2 or (len(common_words) >= 1 and min_words <= 3)
 
 def _build_jours_json(planning_classes, json_path):

@@ -507,7 +507,7 @@ def assigner(planning_classes, dispos_formateurs, affectations):
 def ecrire_planning(template_path, assignment, mois_cibles, output_path):
     shutil.copy(template_path, output_path)
     wb = load_workbook(output_path)
-    kw = ['BTS','BAC','EC ','CGC','NDRC','GPME','RDC','RH','Master']
+    kw = ['BTS','BAC','EC ','CGC','NDRC','GPME','RDC','RH','Master','M3','M4','MCOM','BACHELOR','CARREFOUR']
     jf = {'lundi':0,'mardi':1,'mercredi':2,'jeudi':3,'vendredi':4,'lun':0,'mar':1,'mer':2,'jeu':3,'ven':4}
 
     for sn in wb.sheetnames:
@@ -678,7 +678,7 @@ def _resolve_fill_color(fill):
     return None
 
 def detect_structure(ws):
-    kw = ['BTS','BAC','EC ','CGC','NDRC','GPME','RDC','RH','Master']
+    kw = ['BTS','BAC','EC ','CGC','NDRC','GPME','RDC','RH','Master','M3','M4','MCOM','BACHELOR','CARREFOUR']
     cc = {}; colors = {}
     for ri in range(1, 6):
         for ci in range(1, ws.max_column+1):
@@ -703,21 +703,45 @@ def detect_structure(ws):
         break
     return {'class_cols': cc, 'class_colors': colors, 'first_data_row': fdr, 'day_label_col': dlc}
 
+_ALIAS_CLASSES = {
+    'M3': ['MCOM 3', 'MCOM3', 'MASTER 3', 'MASTERE 3'],
+    'M4': ['MCOM 4', 'MCOM4', 'MASTER 4', 'MASTERE 4'],
+}
+_ALIAS_REVERSE = {alias.upper(): canon for canon, aliases in _ALIAS_CLASSES.items() for alias in aliases}
+
+def _normalise_nom(n):
+    import re as _re
+    nu = n.strip().upper()
+    # Supprimer mots parasites
+    for w in ['PLANNING','BACHELOR','COMMERCE','CONTRAT','APP','VERSION','MODIFIÉ','MODIFIE','JUILLET']:
+        nu = _re.sub(r'\b' + w + r'\b', '', nu)
+    # Remplacer MCOM/MASTERE par M
+    nu = _re.sub(r'\bMCOM\b', 'M', nu)
+    nu = _re.sub(r'\bMASTERE?\b', 'M', nu)
+    # Séparer M3/M4 en "M 3"/"M 4" pour que le numéro soit extrait séparément
+    nu = _re.sub(r'\bM(\d+)\b', r'M \1', nu)
+    return nu.strip()
+
 def noms_similaires(a, b):
     """Retourne True si deux noms désignent probablement la même entité.
     - Avec numéros (classes) : numéro commun + mot commun
     - Sans numéros (formateurs) : au moins 2 mots significatifs en commun"""
     import re as _re
+    # Alias explicites M3/M4
+    au, bu = a.strip().upper(), b.strip().upper()
+    if _ALIAS_REVERSE.get(au) == bu or _ALIAS_REVERSE.get(bu) == au: return True
+    # Normaliser avant comparaison
+    a, b = _normalise_nom(a), _normalise_nom(b)
     STOP = {'DE','DU','LE','LA','LES','ET','EN','PAR','POUR','SUR','AU','AUX',
             'TABLEAU','PLANNING','DISPONIBILITES','DISPONIBILITÉ','DISPONIBILITÉS'}
     nums_a = set(_re.findall(r'\d+', a))
     nums_b = set(_re.findall(r'\d+', b))
-    words_a = set(w.upper() for w in _re.findall(r'[A-Za-z\u00C0-\u024F]{2,}', a)) - STOP
-    words_b = set(w.upper() for w in _re.findall(r'[A-Za-z\u00C0-\u024F]{2,}', b)) - STOP
+    words_a = set(w.upper() for w in _re.findall(r'[A-Za-zÀ-ɏ]+', a)) - STOP
+    words_b = set(w.upper() for w in _re.findall(r'[A-Za-zÀ-ɏ]+', b)) - STOP
     common_words = words_a & words_b
     if nums_a and nums_b:
-        # Noms avec numéros (classes) : numéro + mot commun
-        return bool(nums_a & nums_b) and bool(common_words)
+        # Noms avec numéros : numéro commun + (mot commun OU aucun mot des deux côtés)
+        return bool(nums_a & nums_b) and (bool(common_words) or (not words_a and not words_b))
     else:
         # Noms sans numéros (formateurs) : au moins 2 mots significatifs communs
         # OU 1 mot commun si l'un des noms est court (≤3 mots)

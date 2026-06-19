@@ -44,7 +44,13 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:5000/)",
       "Bash(git fetch *)",
       "Bash(git commit *)",
-      "Bash(git merge *)"
+      "Bash(git merge *)",
+      "Bash(mv template_vierge_SEPTEMBRE_2026_corrige.xlsx /tmp/template_corrige_backup.xlsx)",
+      "Bash(mv /tmp/template_corrige_backup.xlsx template_vierge_SEPTEMBRE_2026_corrige.xlsx)",
+      "Bash(python3 -c ' *)",
+      "Bash(python -X utf8 test_template_vierge.py)",
+      "Bash(sed -n '185,260p' app.py)",
+      "Bash(sed -n '454,560p' app.py)"
     ],
     "additionalDirectories": [
       "\\tmp"

@@ -144,6 +144,7 @@
     #panel-vierge     { --accent: #8B4400; --accent-bg: #FFF7F2; --accent-light: #F0CAAA; }
     #panel-colorie    { --accent: #2A5C40; --accent-bg: #F0FAF5; --accent-light: #B6DFC6; }
     #panel-formateurs { --accent: #1A4A7A; --accent-bg: #EFF4FF; --accent-light: #B8CFEE; }
+    #panel-dashboard  { --accent: #1A6A5A; --accent-bg: #EFFAF6; --accent-light: #A8DEC9; }
     #panel-fusion     { --accent: #5B2A8B; --accent-bg: #F7F2FF; --accent-light: #D4B8EE; }
 
     @media (max-width: 640px) {
@@ -165,6 +166,7 @@
       <button class="tab-btn active" data-tab="vierge">📋 Template vierge</button>
       <button class="tab-btn"        data-tab="colorie">🗓 Template colorié</button>
       <button class="tab-btn"        data-tab="formateurs">⚡ Planning formateurs</button>
+      <button class="tab-btn"        data-tab="dashboard">📊 Dashboard</button>
       <button class="tab-btn"        data-tab="fusion">🗂️ Fusionner</button>
     </nav>
 
@@ -429,6 +431,55 @@
   </section><!-- /panel-formateurs -->
 
 
+  <!-- ══════════════════════ ONGLET : Dashboard cohérence ════ -->
+  <section id="panel-dashboard" class="tab-panel">
+
+    <div class="info-banner" style="background:#EFFAF6;border:1px solid #A8DEC9;color:#0d3d33">
+      <strong>Dashboard de cohérence</strong> — Déposez le <strong>planning généré</strong>, le <strong>tableau matière-formateur</strong> et les <strong>disponibilités</strong> pour vérifier le respect des règles (heures, dispos, manques par classe).
+    </div>
+
+    <div class="card" style="padding:17px;margin-bottom:14px">
+      <div class="stitle" style="color:#1A6A5A">Fichiers à analyser</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div>
+          <div class="drop-zone" id="d-plan-drop" style="--accent:#1A6A5A;--accent-bg:#EFFAF6">
+            <input type="file" id="d-plan-file" accept=".xlsx" style="z-index:2"/>
+            <div class="dz-icon">📋</div>
+            <div class="dz-label">Planning généré</div>
+            <div class="dz-hint">Planning_Formateurs…xlsx</div>
+          </div>
+          <div class="file-list" id="d-plan-files"></div>
+        </div>
+        <div>
+          <div class="drop-zone" id="d-mat-drop" style="--accent:#1A6A5A;--accent-bg:#EFFAF6">
+            <input type="file" id="d-mat-file" accept=".xlsx" style="z-index:2"/>
+            <div class="dz-icon">📊</div>
+            <div class="dz-label">Tableau matière</div>
+            <div class="dz-hint">AFFECTATIONS — .xlsx</div>
+          </div>
+          <div class="file-list" id="d-mat-files"></div>
+        </div>
+        <div>
+          <div class="drop-zone" id="d-dispos-drop" style="--accent:#1A6A5A;--accent-bg:#EFFAF6">
+            <input type="file" id="d-dispos-file" accept=".xlsx" multiple style="z-index:2"/>
+            <div class="dz-icon">📅</div>
+            <div class="dz-label" id="d-dispos-lbl">Disponibilités</div>
+            <div class="dz-hint">Plusieurs fichiers OK</div>
+          </div>
+          <div class="file-list" id="d-dispos-files"></div>
+        </div>
+      </div>
+      <div class="cta-wrap" style="margin-top:14px">
+        <button class="cta-btn" id="d-btn" style="background:#1A6A5A" disabled>📊 Analyser la cohérence</button>
+        <div class="cta-hint" id="d-hint">Déposez au moins le planning et le tableau matière</div>
+      </div>
+    </div>
+
+    <div id="d-result"></div>
+
+  </section><!-- /panel-dashboard -->
+
+
   <!-- ══════════════════════ ONGLET 4 : Fusionner Excel ════ -->
   <section id="panel-fusion" class="tab-panel">
 
@@ -525,6 +576,7 @@ const S = {
   f: { sel: new Set([9,10,11,12,1,2,3,4,5,6]), annee: 2026, plannings: [],
        dispos: [], moisCouverts: [], tplFile: null, tplName: null, busy: false },
   m: { fichiers: [], busy: false },
+  d: { plan: null, mat: null, dispos: [], busy: false },
 };
 
 // ─── Navigation onglets ───────────────────────────────────────────────────────
@@ -685,18 +737,39 @@ setupDrop(document.getElementById('v-tpl-drop'), files => {
 // Input tableau formateurs (onglet f)
 function setFTpl(file) {
   S.f.tplFile = file; S.f.tplName = file.name;
+  S.f.totalHeures = null;            // reset
   renderFTplChip();
   refresh();
+  chargerHeuresFormateurs(file);     // calcul en direct du total d'heures prévues
+}
+function chargerHeuresFormateurs(file) {
+  const fd = new FormData();
+  fd.append('template', file);
+  fetch('/heures-formateurs', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+      if (d && typeof d.total_heures === 'number') {
+        S.f.totalHeures = d.total_heures;
+        S.f.nbFormateurs = d.nb_formateurs || 0;
+        renderFTplChip();
+      }
+    })
+    .catch(() => {});
 }
 function renderFTplChip() {
   const el = document.getElementById('f-tpl-files');
   if (!el) return;
   if (!S.f.tplFile) { el.innerHTML = ''; return; }
+  const heuresBadge = (S.f.totalHeures != null)
+    ? `<div style="margin-top:6px;padding:8px 12px;background:#EFF4FF;border:1px solid #B8CFEE;border-radius:8px;font-size:13px;font-weight:600;color:#1A4A7A">
+         ⏱️ ${S.f.totalHeures} h prévues au total${S.f.nbFormateurs ? ` · ${S.f.nbFormateurs} formateurs` : ''}
+       </div>`
+    : '';
   el.innerHTML = `<div class="file-chip" style="background:#EFF4FF">
     <span style="font-size:14px">📊</span>
     <span class="file-chip-name">${esc(S.f.tplName)}</span>
-    <button class="file-chip-del" onclick="S.f.tplFile=null;S.f.tplName=null;renderFTplChip();refresh()">×</button>
-  </div>`;
+    <button class="file-chip-del" onclick="S.f.tplFile=null;S.f.tplName=null;S.f.totalHeures=null;renderFTplChip();refresh()">×</button>
+  </div>${heuresBadge}`;
 }
 const fTplFile = document.getElementById('f-tpl-file');
 if (fTplFile) fTplFile.addEventListener('change', function() { if (this.files[0]) setFTpl(this.files[0]); });
@@ -952,6 +1025,7 @@ function refresh() {
 
   buildChecklist();
   refreshFusion();
+  refreshDashboard();
 }
 
 // ─── Chrono global par onglet ─────────────────────────────────────────────────
@@ -1224,6 +1298,7 @@ document.getElementById('f-btn').addEventListener('click', async () => {
         `📅 ${sel.length} mois`,
         `👥 ${data.formateurs_actifs ?? '–'} formateurs`,
         `✅ ${data.sessions_assignees ?? '–'} sessions`,
+        `⏱️ ${data.total_heures_placees ?? '–'} h placées`,
         data.creneaux_sans_prof > 0 ? `⚠️ ${data.creneaux_sans_prof} sans prof` : '✅ Complet',
         `⏱ ${elapsed_f.toFixed(1)}s`,
       ],
@@ -1341,6 +1416,179 @@ document.getElementById('m-btn').addEventListener('click', async () => {
     ps.busy = false; refreshFusion(); hideProgress('m');
   }
 });
+
+// ─── Dashboard cohérence ──────────────────────────────────────────────────────
+function setDPlan(file){ S.d.plan=file; renderDFiles(); refresh(); }
+function setDMat(file){ S.d.mat=file; renderDFiles(); refresh(); }
+function addDDispos(files){
+  const valides = Array.from(files).filter(f => /\.xlsx$/i.test(f.name));
+  const noms = new Set(S.d.dispos.map(f=>f.name));
+  valides.filter(f=>!noms.has(f.name)).forEach(f=>S.d.dispos.push(f));
+  renderDFiles(); refresh();
+}
+function chip(name, onDel){
+  return `<div class="file-chip" style="background:#EFFAF6">
+    <span style="font-size:14px">📄</span>
+    <span class="file-chip-name">${esc(name)}</span>
+    <button class="file-chip-del" onclick="${onDel}">×</button></div>`;
+}
+function renderDFiles(){
+  document.getElementById('d-plan-files').innerHTML  = S.d.plan ? chip(S.d.plan.name, 'S.d.plan=null;renderDFiles();refresh()') : '';
+  document.getElementById('d-mat-files').innerHTML   = S.d.mat  ? chip(S.d.mat.name,  'S.d.mat=null;renderDFiles();refresh()')  : '';
+  const lbl = document.getElementById('d-dispos-lbl');
+  if (lbl) lbl.textContent = S.d.dispos.length ? `${S.d.dispos.length} fichier${S.d.dispos.length>1?'s':''}` : 'Disponibilités';
+  document.getElementById('d-dispos-files').innerHTML = S.d.dispos.map((f,i)=>chip(f.name, `S.d.dispos.splice(${i},1);renderDFiles();refresh()`)).join('');
+}
+function refreshDashboard(){
+  const ok = !!S.d.plan && !!S.d.mat;
+  const btn = document.getElementById('d-btn');
+  if (!btn) return;
+  btn.disabled = !ok || S.d.busy;
+  btn.textContent = S.d.busy ? '⏳ Analyse…' : '📊 Analyser la cohérence';
+  const hint = document.getElementById('d-hint');
+  hint.style.display = ok ? 'none' : 'block';
+}
+(function(){
+  const pf=document.getElementById('d-plan-file'); if(pf) pf.addEventListener('change',function(){if(this.files[0])setDPlan(this.files[0]);});
+  const mf=document.getElementById('d-mat-file');  if(mf) mf.addEventListener('change',function(){if(this.files[0])setDMat(this.files[0]);});
+  const df=document.getElementById('d-dispos-file');if(df)df.addEventListener('change',function(){if(this.files.length)addDDispos(this.files);});
+  setupDrop(document.getElementById('d-plan-drop'),  files=>{const f=Array.from(files).find(f=>/\.xlsx$/i.test(f.name)); if(f)setDPlan(f);});
+  setupDrop(document.getElementById('d-mat-drop'),   files=>{const f=Array.from(files).find(f=>/\.xlsx$/i.test(f.name)); if(f)setDMat(f);});
+  setupDrop(document.getElementById('d-dispos-drop'),files=>addDDispos(files));
+  const btn=document.getElementById('d-btn'); if(btn) btn.addEventListener('click', lancerAnalyse);
+})();
+
+function statutBadge(s){
+  const map={
+    ok:        ['✓','#2A7C50','#E8F7EE'],
+    sous:      ['↓ sous-affecté','#B26A00','#FFF3E0'],
+    sur:       ['↑ sur-affecté','#B26A00','#FFF3E0'],
+    jamais_place:['✗ jamais placé','#C0392B','#FDEDEC'],
+    sans_dispo:['🔴 sans dispo','#C0392B','#FDEDEC'],
+  };
+  const [t,c,bg]=map[s]||['?','#777','#eee'];
+  return `<span style="padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;color:${c};background:${bg}">${t}</span>`;
+}
+async function lancerAnalyse(){
+  S.d.busy=true; refreshDashboard();
+  const res=document.getElementById('d-result');
+  res.innerHTML=`<div class="card" style="padding:24px;text-align:center;color:#1A6A5A">⏳ Analyse en cours…</div>`;
+  try{
+    const fd=new FormData();
+    fd.append('planning',S.d.plan);
+    fd.append('matiere',S.d.mat);
+    S.d.dispos.forEach((f,i)=>fd.append('dispo_'+i,f));
+    const r=await fetch(API_BASE+'/analyser-coherence',{method:'POST',body:fd});
+    const d=await r.json();
+    if(d.error){ res.innerHTML=`<div class="card" style="padding:18px;color:#C0392B"><strong>⚠️ Erreur</strong> : ${esc(d.error)}</div>`; return; }
+    renderDashboard(d);
+  }catch(err){
+    res.innerHTML=`<div class="card" style="padding:18px;color:#C0392B"><strong>⚠️ Erreur</strong> : ${esc(String(err))}</div>`;
+  }finally{ S.d.busy=false; refreshDashboard(); }
+}
+async function telechargerPdf(){
+  if(!S.d.plan || !S.d.mat) return;
+  const btn=document.getElementById('d-pdf-btn');
+  const txt=btn?btn.textContent:'';
+  if(btn){ btn.textContent='⏳ Génération…'; btn.disabled=true; }
+  try{
+    const fd=new FormData();
+    fd.append('planning',S.d.plan);
+    fd.append('matiere',S.d.mat);
+    S.d.dispos.forEach((f,i)=>fd.append('dispo_'+i,f));
+    const r=await fetch(API_BASE+'/dashboard-pdf',{method:'POST',body:fd});
+    if(!r.ok){ const e=await r.json().catch(()=>({})); throw new Error(e.error||'Erreur serveur'); }
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download='rapport_coherence.pdf';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }catch(err){
+    alert('Erreur PDF : '+(err.message||err));
+  }finally{
+    if(btn){ btn.textContent=txt; btn.disabled=false; }
+  }
+}
+function card(label,val,sub,color){
+  return `<div class="card" style="padding:16px;text-align:center">
+    <div style="font-size:11px;color:#999;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${label}</div>
+    <div style="font-size:26px;font-weight:700;color:${color||'#1a1a1a'}">${val}</div>
+    ${sub?`<div style="font-size:11px;color:#aaa;margin-top:2px">${sub}</div>`:''}</div>`;
+}
+function renderDashboard(d){
+  const s=d.synthese;
+  const confColor = s.conformite_pct>=99?'#2A7C50':s.conformite_pct>=90?'#B26A00':'#C0392B';
+  const barre=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div style="font-size:15px;font-weight:700;color:#1A6A5A">Rapport de cohérence</div>
+    <button id="d-pdf-btn" onclick="telechargerPdf()" style="background:#1A6A5A;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer">⬇ Télécharger en PDF</button>
+  </div>`;
+  const cartes=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px">
+    ${card('Heures prévues',s.total_prevu+' h','',null)}
+    ${card('Heures placées',s.total_place+' h',(s.total_prevu-s.total_place)+' h non placées',null)}
+    ${card('Conformité dispos',s.conformite_pct+'%',s.nb_violations+' violation'+(s.nb_violations>1?'s':''),confColor)}
+    ${card('Formateurs',s.nb_formateurs,s.nb_sans_dispo+' sans fichier dispo',s.nb_sans_dispo>0?'#C0392B':'#2A7C50')}
+  </div>`;
+
+  // Table formateurs
+  const rowsF=d.formateurs.map(f=>{
+    const ec=(f.ecart>0?'+':'')+f.ecart;
+    const ecColor=Math.abs(f.ecart)<=20?'#2A7C50':'#C0392B';
+    return `<tr>
+      <td style="padding:6px 10px;font-weight:500">${esc(f.nom)}</td>
+      <td style="padding:6px 10px;text-align:right">${f.prevu}</td>
+      <td style="padding:6px 10px;text-align:right">${f.place}</td>
+      <td style="padding:6px 10px;text-align:right;color:${ecColor};font-weight:600">${ec}</td>
+      <td style="padding:6px 10px">${statutBadge(f.statut)}</td></tr>`;
+  }).join('');
+  const tableF=`<div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+    <div class="stitle" style="color:#1A6A5A;padding:14px 16px 6px">Heures par formateur</div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="background:#F5F7F6;color:#777;font-size:11px;text-transform:uppercase">
+        <th style="padding:6px 10px;text-align:left">Formateur</th><th style="padding:6px 10px;text-align:right">Prévu</th>
+        <th style="padding:6px 10px;text-align:right">Placé</th><th style="padding:6px 10px;text-align:right">Écart</th>
+        <th style="padding:6px 10px;text-align:left">Statut</th></tr></thead>
+      <tbody>${rowsF}</tbody></table></div>`;
+
+  // Table classes
+  const rowsC=d.classes.map(c=>{
+    const mq=(c.manque>0?'+':'')+c.manque;
+    const mqColor=c.manque>20?'#C0392B':c.manque>0?'#B26A00':'#2A7C50';
+    return `<tr>
+      <td style="padding:6px 10px;font-weight:500">${esc(c.classe)}</td>
+      <td style="padding:6px 10px;text-align:right">${c.prevu}</td>
+      <td style="padding:6px 10px;text-align:right">${c.place}</td>
+      <td style="padding:6px 10px;text-align:right;color:${mqColor};font-weight:600">${mq}</td>
+      <td style="padding:6px 10px;text-align:right;color:${c.sans_prof>0?'#C0392B':'#ccc'}">${c.sans_prof||'–'}</td></tr>`;
+  }).join('');
+  const tableC=`<div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+    <div class="stitle" style="color:#1A6A5A;padding:14px 16px 6px">Heures manquantes par classe</div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="background:#F5F7F6;color:#777;font-size:11px;text-transform:uppercase">
+        <th style="padding:6px 10px;text-align:left">Classe</th><th style="padding:6px 10px;text-align:right">Prévu</th>
+        <th style="padding:6px 10px;text-align:right">Placé</th><th style="padding:6px 10px;text-align:right">Manque</th>
+        <th style="padding:6px 10px;text-align:right">Sans prof</th></tr></thead>
+      <tbody>${rowsC}</tbody></table></div>`;
+
+  // Alertes
+  let alertes='';
+  if(d.manquants.length){
+    alertes+=`<div class="card" style="padding:14px 16px;margin-bottom:12px;border-left:4px solid #C0392B">
+      <strong style="color:#C0392B">🔴 Formateurs sans fichier de disponibilité</strong>
+      <div style="margin-top:6px;font-size:13px">${d.manquants.map(m=>`${esc(m.nom)} (${m.heures}h prévues, impossibles à placer)`).join('<br>')}</div></div>`;
+  }
+  if(d.violations.length){
+    alertes+=`<div class="card" style="padding:14px 16px;margin-bottom:12px;border-left:4px solid #B26A00">
+      <strong style="color:#B26A00">⚠️ Créneaux où le prof n'était pas disponible (${d.violations.length})</strong>
+      <div style="margin-top:6px;font-size:12px;max-height:180px;overflow:auto">${d.violations.map(v=>`${v.date} ${v.demi} — ${esc(v.prof)} (${esc(v.classe)})`).join('<br>')}</div></div>`;
+  } else {
+    alertes+=`<div class="card" style="padding:14px 16px;margin-bottom:12px;border-left:4px solid #2A7C50">
+      <strong style="color:#2A7C50">✅ Aucune violation de disponibilité</strong>
+      <div style="font-size:13px;color:#777;margin-top:4px">Tous les profs placés étaient disponibles.</div></div>`;
+  }
+
+  document.getElementById('d-result').innerHTML = barre + cartes + tableF + tableC + alertes;
+}
 
 // ─── Init ──────────────────────────────────────────────────────────────────────
 ['v','c','f'].forEach(p => { buildGrid(p); buildTimeline(p); });
